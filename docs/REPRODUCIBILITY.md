@@ -121,8 +121,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-# 2. Create environment (Option B: uv with Kaggle-matching Python 3.11)
-uv venv --python 3.11 .venv
+# 2. Create environment (Option B: uv with Kaggle-matching Python 3.11.11)
+uv venv --python 3.11.11 .venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
 

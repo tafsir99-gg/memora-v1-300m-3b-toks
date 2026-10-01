@@ -14,8 +14,8 @@
 | Quality | Classifier-filtered for educational content | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
 | Preprocessing | Already cleaned: URL/boilerplate removal, language filtering, near-dedup | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
 | Format | Parquet with `text` column | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
-| Redistribution | Allowed with attribution (ODC-By) | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
-| Public release compatible | ✅ Yes | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
+| Redistribution | Allowed with attribution (ODC-By) but dataset card does not settle third-party copyright | ASSUMED |
+| Public release compatible | ✅ Yes (but see publication strategy below) | ASSUMED |
 
 **Why FineWeb-Edu:**
 - Already extensively cleaned and deduplicated (saves massive preprocessing effort)
@@ -25,7 +25,14 @@
 - Well-documented provenance and methodology
 - Used as baseline in multiple open-source LLM projects
 
-### 1.2 Alternatives Considered
+### 1.2 Publication Strategy
+
+While the dataset card is ODC-By, this does not settle third-party copyright in the underlying web text. Therefore, we will separate what we publish:
+- **Code and Tokenizer:** We will publish the training code and the trained tokenizer (along with its vocabulary and merges).
+- **Tokenized Shards:** By default, we will **NOT** redistribute the binary tokenized data shards.
+- **Reproducibility:** Instead, we will publish the build scripts and a manifest (e.g., exact Parquet file list, row ranges, and hash signatures) so that anyone can deterministically rebuild the exact training shards from the upstream dataset.
+
+### 1.3 Alternatives Considered
 
 | Dataset | License | Size | Verdict | Reasoning |
 |---------|---------|------|---------|-----------|
@@ -36,7 +43,7 @@
 | SlimPajama | Apache-2.0 | 627B tokens | **Reasonable alternative** | Good license, pre-deduplicated; but FineWeb-Edu has better quality filtering |
 | Dolma v1.7 | ODC-By/AI2 ImpACT | ~3T tokens | **Reasonable alternative** | High quality but larger than needed; less educational focus |
 
-### 1.3 Why Not Multiple Sources?
+### 1.4 Why Not Multiple Sources?
 
 At 3B tokens (a small training run), mixing multiple corpora adds complexity (proportions, domain weighting, contamination tracking across sources) with limited benefit. A single, high-quality, well-understood source is simpler and more reproducible. If we had a 100B+ token budget, mixing would be justified.
 

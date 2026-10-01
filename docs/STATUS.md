@@ -18,6 +18,7 @@
 |------|--------|
 | 2026-10-01 | Phase 0 inspection + Phase 1/2 initial plan written |
 | 2026-10-01 | **Rev 2:** Corrected 2×T4 quota rate (2×, not 1×); added 10-15% MFU pessimistic scenarios; added stop/extend decision rules; expanded checkpoint persistence details (sizes, upload/download times, HF history, fallback); added verified claims registry with source URLs and dates; resolved open questions Q1-Q3; added Python version strategy with local venv instructions; confirmed default 1×T4 recommendation |
+| 2026-10-01 | **Rev 3:** Pinned Python to exact Kaggle version (`>=3.11.11, <3.15`); clarified 2xT4 quota rate as a single unambiguous sentence and marked as ASSUMED pending Phase 6 measurement; updated dataset redistribution to ASSUMED (third-party copyright) and clarified publication strategy (code/tokenizer yes, tokenized shards no); documented HF Hub `super_squash_history` to prevent LFS unbounded growth; relabeled 10-15% MFU as "plausible" and established 1B as the committed milestone (3B conditional). |
 
 ## Summary
 
@@ -66,13 +67,13 @@
 |------|--------|--------|------|
 | Kaggle 30h/week GPU quota | VERIFIED | kaggle.com forums, luminoai.in | 2026-10-01 |
 | Kaggle 12h session limit | VERIFIED | kaggle.com forums, clusy.io | 2026-10-01 |
-| **2×T4 = 2× quota rate** | **VERIFIED** | **luminoai.in, kaggle.com forums** | **2026-10-01** |
+| A Kaggle 2×T4 session consumes GPU quota at exactly 2× the wall-clock rate (1 wall-clock hour = 2 quota hours) based on community reports. | ASSUMED (Pending Phase 6 check) | luminoai.in, kaggle.com forums | 2026-10-01 |
 | T4 lacks native bf16 | VERIFIED | NVIDIA T4 datasheet, sm_75 | 2026-10-01 |
 | T4 lacks FlashAttention-2 | VERIFIED | FlashAttention GitHub, requires Ampere+ | 2026-10-01 |
 | T4 fp16 peak: 65 TFLOPS | VERIFIED | NVIDIA T4 datasheet | 2026-10-01 |
 | Kaggle output limit: 20 GB | VERIFIED | kaggle.com/docs | 2026-10-01 |
 | Kaggle dataset limit: 200 GB | VERIFIED | kaggle.com/docs | 2026-10-01 |
-| Kaggle Python version: 3.11 | VERIFIED | github.com/Kaggle/docker-python | 2026-10-01 |
+| Kaggle Python version: 3.11.11 | VERIFIED | github.com/Kaggle/docker-python | 2026-10-01 |
 | PyTorch supports Python 3.14 | VERIFIED | pytorch.org | 2026-10-01 |
 | FineWeb-Edu license: ODC-By 1.0 | VERIFIED | HuggingFace dataset card | 2026-10-01 |
 | FineWeb-Edu sample-10BT: ~10B tokens | VERIFIED | HuggingFace dataset card | 2026-10-01 |

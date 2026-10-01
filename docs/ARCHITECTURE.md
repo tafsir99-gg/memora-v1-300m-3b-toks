@@ -564,7 +564,7 @@ Will implement KV-cache for autoregressive generation. Justification: without it
 
 ### 10.2 Key Correction: 2×T4 Quota Rate
 
-**2×T4 consumes quota at 2× rate** (1 clock-hour = 2 quota-hours). — VERIFIED ([luminoai.in](https://luminoai.in), [kaggle.com forums](https://kaggle.com), checked 2026-10-01)
+A Kaggle 2×T4 session consumes GPU quota at exactly 2× the wall-clock rate (1 wall-clock hour = 2 quota hours) based on community reports ([luminoai.in](https://luminoai.in), 2026-10-01). — ASSUMED (will be verified in Phase 6 by comparing Kaggle's quota meter before and after short 1×T4 and 2×T4 test sessions).
 
 30h weekly quota → only 15 clock-hours of 2×T4 usage. Since DDP scaling is always < 100%, **1×T4 is always more quota-efficient**. Default: use 1×T4. 2×T4 only useful if wall-clock speed is more important than total quota consumed.
 
@@ -572,11 +572,11 @@ Will implement KV-cache for autoregressive generation. Justification: without it
 
 | Scenario | MFU | tok/s | 1B tokens | 3B tokens | Weeks (at ~25h eff/week) |
 |----------|-----|-------|-----------|-----------|---------------------------|
-| **Very pessimistic** | **10%** | **3,611** | **76.9h** | **230.8h** | **1B: 3.1w · 3B: 9.2w** |
-| **Pessimistic** | **15%** | **5,417** | **51.3h** | **153.8h** | **1B: 2.1w · 3B: 6.2w** |
-| Worst case | 20% | 7,222 | 38.5h | 115.4h | 1B: 1.5w · 3B: 4.6w |
-| Conservative | 25% | 9,028 | 30.8h | 92.3h | 1B: 1.2w · 3B: 3.7w |
-| **Likely** | **30%** | **10,833** | **25.6h** | **76.9h** | **1B: 1.0w · 3B: 3.1w** |
+| **Plausible Low** | **10%** | **3,611** | **76.9h** | **230.8h** | **1B: 3.1w · 3B: 9.2w** |
+| **Plausible Base** | **15%** | **5,417** | **51.3h** | **153.8h** | **1B: 2.1w · 3B: 6.2w** |
+| Conservative | 20% | 7,222 | 38.5h | 115.4h | 1B: 1.5w · 3B: 4.6w |
+| Target | 25% | 9,028 | 30.8h | 92.3h | 1B: 1.2w · 3B: 3.7w |
+| **Optimistic High** | **30%** | **10,833** | **25.6h** | **76.9h** | **1B: 1.0w · 3B: 3.1w** |
 
 ### 10.4 Feasibility Verdict (ESTIMATE)
 

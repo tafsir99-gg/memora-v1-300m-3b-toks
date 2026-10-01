@@ -18,7 +18,7 @@ Each subsystem has acceptance criteria that must pass before moving to the next.
 [project]
 name = "memora"
 version = "0.1.0"
-requires-python = ">=3.11"  # Kaggle runs 3.11; local Mac has 3.14; both supported
+requires-python = ">=3.11.11, <3.15"  # Kaggle runs 3.11.11; local Mac has 3.14; PyTorch 2.10+ provides 3.14 wheels
 
 dependencies = [
     "torch>=2.2.0",           # Core framework

@@ -28,15 +28,15 @@ Every factual claim about external systems, with verification status:
 |---|-------|--------|--------|-------------|
 | V1 | Kaggle GPU quota: 30h/week | VERIFIED | [kaggle.com forums](https://kaggle.com), [luminoai.in](https://luminoai.in) | 2026-10-01 |
 | V2 | Kaggle session limit: 12h max | VERIFIED | [kaggle.com forums](https://kaggle.com), [clusy.io](https://clusy.io) | 2026-10-01 |
-| V3 | **2×T4 quota rate: 2× (1 clock-hour = 2 quota-hours)** | VERIFIED | [luminoai.in](https://luminoai.in), [kaggle.com forums](https://kaggle.com) — multiple independent sources confirm double consumption rate | 2026-10-01 |
+| V3 | A Kaggle 2×T4 session consumes GPU quota at exactly 2× the wall-clock rate (1 wall-clock hour = 2 quota hours) based on community reports. | ASSUMED | [luminoai.in](https://luminoai.in), [kaggle.com forums](https://kaggle.com) (Will verify in Phase 6) | 2026-10-01 |
 | V4 | T4 lacks native bf16 | VERIFIED | [NVIDIA T4 datasheet](https://www.nvidia.com/en-us/data-center/tesla-t4/), sm_75 Turing arch | 2026-10-01 |
 | V5 | T4 lacks FlashAttention-2 | VERIFIED | [FlashAttention GitHub](https://github.com/Dao-AILab/flash-attention), requires Ampere+ (sm_80+) | 2026-10-01 |
 | V6 | T4 fp16 peak: 65 TFLOPS | VERIFIED | [NVIDIA T4 datasheet](https://www.nvidia.com/en-us/data-center/tesla-t4/) | 2026-10-01 |
 | V7 | T4 compute capability: sm_75 | VERIFIED | [NVIDIA GPU compute capability table](https://developer.nvidia.com/cuda-gpus) | 2026-10-01 |
 | V8 | Kaggle output limit: 20 GB | VERIFIED | [kaggle.com/docs](https://kaggle.com/docs) | 2026-10-01 |
 | V9 | Kaggle dataset limit: 200 GB (public) | VERIFIED | [kaggle.com/docs](https://kaggle.com/docs) | 2026-10-01 |
-| V10 | Kaggle Python version: 3.11 (current default) | VERIFIED | [github.com/Kaggle/docker-python](https://github.com/Kaggle/docker-python), kaggle.com release notes | 2026-10-01 |
-| V11 | PyTorch supports Python 3.14 | VERIFIED | [pytorch.org](https://pytorch.org/get-started/locally/) | 2026-10-01 |
+| V10 | Kaggle Python version: 3.11.11 (current default) | VERIFIED | [github.com/Kaggle/docker-python](https://github.com/Kaggle/docker-python), kaggle.com release notes | 2026-10-01 |
+| V11 | PyTorch supports Python 3.14 | VERIFIED | [pytorch.org](https://pytorch.org/get-started/locally/) (PyTorch 2.10+) | 2026-10-01 |
 | V12 | FineWeb-Edu license: ODC-By 1.0 | VERIFIED | [huggingface.co/datasets/HuggingFaceFW/fineweb-edu](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu) dataset card | 2026-10-01 |
 | V13 | FineWeb-Edu sample-10BT: ~10B tokens | VERIFIED | [huggingface.co/datasets/HuggingFaceFW/fineweb-edu](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu) dataset card | 2026-10-01 |
 | V14 | FineWeb-Edu also subject to CommonCrawl ToU | VERIFIED | [huggingface.co/datasets/HuggingFaceFW/fineweb-edu](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu) dataset card | 2026-10-01 |
@@ -87,7 +87,7 @@ Every factual claim about external systems, with verification status:
 | D19 | Apache-2.0 for code | MIT, GPL | Already committed in repo; permissive; compatible with most uses | VERIFIED (LICENSE file exists) |
 | D20 | ODC-By 1.0 acknowledgment for data | — | FineWeb-Edu requires attribution; will include in README and model card | VERIFIED (dataset license) |
 | D21 | **Default 1×T4** (not 2×T4) | 2×T4 | 2×T4 costs 2× quota but gives <2× throughput → net quota loss. 1×T4 is always more quota-efficient. | VERIFIED (quota rate confirmed 2026-10-01) |
-| D22 | **Python >=3.11** project pin | >=3.12, ==3.11 | Kaggle runs 3.11; local Mac has 3.14; broad pin allows both; test on 3.11 for safety | VERIFIED (Kaggle Python version confirmed) |
+| D22 | **Python >=3.11.11, <3.15** project pin | >=3.11.11, <3.15 | Kaggle runs 3.11.11; local Mac has 3.14. Excludes <3.11.11, while PyTorch 2.10+ wheels allow up to 3.14 | VERIFIED |
 
 ## 6. Contradictions and Ambiguities in the Spec (Identified in Phase 0)
 
@@ -105,14 +105,14 @@ Every factual claim about external systems, with verification status:
 
 | Environment | Python Version | Notes |
 |-------------|---------------|-------|
-| **Local development (Mac Air M2)** | 3.14.2 (system) | Use `python3.11` or `python3.12` via pyenv/uv for venv if needed for compatibility testing |
-| **Kaggle (training)** | 3.11.x (Kaggle default) | VERIFIED: Kaggle docker-python uses 3.11 |
-| **Project pin** | `>=3.11` | Set in `pyproject.toml`; broad enough for both environments |
+| **Local development (Mac Air M2)** | 3.14.2 (system) | Use `python3.11.11` via pyenv/uv for venv if needed for Kaggle parity testing |
+| **Kaggle (training)** | 3.11.11 (Kaggle default) | VERIFIED: Kaggle docker-python uses 3.11.11 |
+| **Project pin** | `>=3.11.11, <3.15` | Set in `pyproject.toml`; bounds PyTorch compatibility up to 3.14 |
 
 ### Local venv setup instructions
 
 ```bash
-# Option A: Use system Python 3.14 (works, since PyTorch supports 3.14)
+# Option A: Use system Python 3.14 (works, since PyTorch 2.10+ supports 3.14)
 cd memora-v1-300m-3b-toks
 python3 -m venv .venv
 source .venv/bin/activate
@@ -120,16 +120,16 @@ pip install -e ".[dev]"
 
 # Option B: Use uv with a specific Python version (recommended for Kaggle parity)
 cd memora-v1-300m-3b-toks
-uv venv --python 3.11 .venv
+uv venv --python 3.11.11 .venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
 
 # Verify
-python --version  # Should show 3.11.x or 3.14.x
+python --version  # Should show 3.11.11 or 3.14.x
 python -c "import torch; print(torch.__version__)"
 ```
 
-**Note:** `uv venv --python 3.11` will auto-download Python 3.11 if not already installed. This is the recommended approach for Kaggle parity testing.
+**Note:** `uv venv --python 3.11.11` will auto-download Python 3.11.11 if not already installed. This is the recommended approach for Kaggle parity testing.
 
 ## 8. Acceptance Criteria for the Project
 

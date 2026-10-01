@@ -131,7 +131,7 @@ At 3B tokens on a ~300M model:
 
 ### 3.1 Key Correction: 2×T4 Quota Rate
 
-**2×T4 consumes quota at 2× rate** (1 clock-hour = 2 quota-hours). — VERIFIED, [luminoai.in](https://luminoai.in), [kaggle.com forums](https://kaggle.com), checked 2026-10-01.
+A Kaggle 2×T4 session consumes GPU quota at exactly 2× the wall-clock rate (1 wall-clock hour = 2 quota hours) based on community reports ([luminoai.in](https://luminoai.in), 2026-10-01). — ASSUMED (will be verified in Phase 6 by comparing Kaggle's quota meter before and after short 1×T4 and 2×T4 test sessions).
 
 This means: 30h weekly quota → only 15 clock-hours of 2×T4 usage.
 
@@ -141,27 +141,29 @@ This means: 30h weekly quota → only 15 clock-hours of 2×T4 usage.
 
 - T4 peak fp16 Tensor Core: 65 TFLOPS — VERIFIED, NVIDIA specs
 - FLOPs per token ≈ 6N ≈ 1.78 × 10⁹ (standard approximation, ignores attention quadratic term)
-- Model FLOP Utilization (MFU): range from 10% (very pessimistic) to 30% (likely) — UNKNOWN-NEEDS-MEASUREMENT
+- Model FLOP Utilization (MFU): range from 10% (plausible low) to 30% (optimistic high) — UNKNOWN-NEEDS-MEASUREMENT
 - DDP scaling efficiency on 2×T4 over PCIe: ~85% — ASSUMED, NEEDS-MEASUREMENT
 - Effective training per week: ~25 quota-hours (after per-session overhead of ~1-1.5h for setup, checkpoint, upload)
 
 ### 3.3 Throughput Estimates — 1×T4 (Recommended Default)
 
+> **Goal definition:** 1B tokens is the committed milestone. 3B tokens is conditional on measured tok/s from Phase 6.
+
 | Scenario | MFU | tok/s | 1B tokens | 3B tokens | Weeks (at ~25h eff/week) |
 |----------|-----|-------|-----------|-----------|--------------------------|
-| **Very pessimistic** | **10%** | **3,611** | **76.9h** | **230.8h** | **1B: 3.1w · 3B: 9.2w** |
-| **Pessimistic** | **15%** | **5,417** | **51.3h** | **153.8h** | **1B: 2.1w · 3B: 6.2w** |
-| Worst case | 20% | 7,222 | 38.5h | 115.4h | 1B: 1.5w · 3B: 4.6w |
-| Conservative | 25% | 9,028 | 30.8h | 92.3h | 1B: 1.2w · 3B: 3.7w |
-| Likely | 30% | 10,833 | 25.6h | 76.9h | 1B: 1.0w · 3B: 3.1w |
+| **Plausible Low** | **10%** | **3,611** | **76.9h** | **230.8h** | **1B: 3.1w · 3B: 9.2w** |
+| **Plausible Base** | **15%** | **5,417** | **51.3h** | **153.8h** | **1B: 2.1w · 3B: 6.2w** |
+| Conservative | 20% | 7,222 | 38.5h | 115.4h | 1B: 1.5w · 3B: 4.6w |
+| Target | 25% | 9,028 | 30.8h | 92.3h | 1B: 1.2w · 3B: 3.7w |
+| Optimistic High | 30% | 10,833 | 25.6h | 76.9h | 1B: 1.0w · 3B: 3.1w |
 
 ### 3.4 Throughput Estimates — 2×T4 (Only if Wall-Clock Speed Needed)
 
 | Scenario | MFU | tok/s | Clock hours | Quota-hours consumed | Weeks |
 |----------|-----|-------|-------------|---------------------|-------|
-| Pessimistic | 15% | 9,208 | 1B: 30.2h · 3B: 90.5h | 1B: 60.3h · 3B: 181h | 1B: 2.4w · 3B: 7.2w |
-| Conservative | 25% | 15,347 | 1B: 18.1h · 3B: 54.3h | 1B: 36.2h · 3B: 108.6h | 1B: 1.4w · 3B: 4.3w |
-| Likely | 30% | 18,417 | 1B: 15.1h · 3B: 45.2h | 1B: 30.2h · 3B: 90.5h | 1B: 1.2w · 3B: 3.6w |
+| Plausible Base | 15% | 9,208 | 1B: 30.2h · 3B: 90.5h | 1B: 60.3h · 3B: 181h | 1B: 2.4w · 3B: 7.2w |
+| Target | 25% | 15,347 | 1B: 18.1h · 3B: 54.3h | 1B: 36.2h · 3B: 108.6h | 1B: 1.4w · 3B: 4.3w |
+| Optimistic High | 30% | 18,417 | 1B: 15.1h · 3B: 45.2h | 1B: 30.2h · 3B: 90.5h | 1B: 1.2w · 3B: 3.6w |
 
 Note: 2×T4 is faster in clock time but consumes **more** weekly quota.
 
@@ -296,8 +298,9 @@ Each session records:
 - **What is uploaded:** Only the latest full resumable checkpoint + metadata sidecar. NOT all retained checkpoints.
 - **Upload time:** ~3.6 GB at ~50 MB/s (Kaggle network) ≈ **~72 seconds**. At ~10 MB/s (pessimistic) ≈ **~6 minutes**. Both acceptable.
 - **Download time at session start:** Same as upload time. Budget ~2-6 minutes.
-- **Repo history growth:** Use `huggingface_hub` API with `commit_message` overwriting the same filenames. HF Hub stores git history, so old versions accumulate. **Mitigation:** Periodically (every ~5 sessions) create a fresh repo or use `hf_hub_download` with `force_download=True` to avoid cloning full history. Alternatively, use HF Hub's `upload_file` which doesn't clone history client-side. **For downloading**, use `hf_hub_download` (single-file download, no git clone needed) — this avoids history growth issues entirely on the download side.
-- **Storage limit:** HF Hub free tier allows unlimited public repos with no per-file size limit for LFS. A few GB per upload is fine.
+- **Repo history growth:** Overwriting the same file in HF Hub still keeps the old versions in Git LFS history. Since each upload is ~3.6 GB, cumulative storage will grow by ~3.6 GB per session (e.g., after 20 sessions, the repo will consume ~72 GB of LFS storage). **Mitigation:** To prevent unbounded growth, we will either use the `HfApi().super_squash_history()` method to compress the commit history, or periodically create a fresh repo. `super_squash_history` is the preferred automated approach.
+- **Client-side history:** Using `huggingface_hub.upload_file()` and `hf_hub_download()` avoids cloning the git history locally, entirely sidestepping local disk bloat on Kaggle.
+- **Storage limit:** HF Hub free tier allows unlimited public repos with no per-file size limit for LFS. — ASSUMED (We assume 70+ GB of cumulative checkpoints won't trigger rate limits or blocks before squashing).
 
 ### 7.4 Fallback if Kaggle Internet is Unavailable
 
