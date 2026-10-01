@@ -284,12 +284,12 @@ Each session records:
 
 | Type | Kept | Max disk | Justification |
 |------|------|----------|---------------|
-| Full resumable | Last 3 | ~10.8 GB | Safety margin for corruption/fallback |
-| Lightweight | Last 5 | ~6.0 GB | Quick weight snapshots; low cost |
+| Full resumable | Last 2 | ~7.2 GB | Safety margin for corruption/fallback |
+| Lightweight | Last 3 | ~3.6 GB | Quick weight snapshots; low cost |
 | Best validation | Last 1 | ~3.6 GB | Best model for final release |
-| **Total on disk** | | **~20.4 GB** | Tight fit for Kaggle 20 GB output limit |
+| **Total on disk** | | **~14.4 GB** | Safely within Kaggle 20 GB output limit |
 
-**Note:** The 20.4 GB estimate slightly exceeds 20 GB. Mitigation: reduce to keeping 2 full resumable checkpoints (~17.2 GB total) OR reduce lightweight to 3 (~18.0 GB). Will finalize during implementation. We can also compress checkpoints (gzip) to reduce on-disk footprint by ~30-50%.
+**Note:** The 14.4 GB estimate comfortably fits within the 20 GB limit. We can also compress checkpoints (gzip) to reduce on-disk footprint by ~30-50% if needed.
 
 ### 7.3 HF Hub Persistence
 

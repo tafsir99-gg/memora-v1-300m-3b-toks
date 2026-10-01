@@ -6,16 +6,16 @@
 
 | Property | Value | Status |
 |----------|-------|--------|
-| Name | FineWeb-Edu (sample-10BT) | VERIFIED |
-| Source | HuggingFace: `HuggingFaceFW/fineweb-edu` (sample-10BT config) | VERIFIED |
-| License | ODC-By 1.0 (Open Data Commons Attribution) | VERIFIED |
-| Size | ~10B tokens (~26 GB Parquet, compressed) | VERIFIED |
-| Language | English only | VERIFIED |
-| Quality | Classifier-filtered for educational content | VERIFIED |
-| Preprocessing | Already cleaned: URL/boilerplate removal, language filtering, near-dedup | VERIFIED |
-| Format | Parquet with `text` column | VERIFIED |
-| Redistribution | Allowed with attribution (ODC-By) | VERIFIED |
-| Public release compatible | ✅ Yes | VERIFIED |
+| Name | FineWeb-Edu (sample-10BT) | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
+| Source | HuggingFace: `HuggingFaceFW/fineweb-edu` (sample-10BT config) | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
+| License | ODC-By 1.0 (Open Data Commons Attribution) | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
+| Size | ~10B tokens (~26 GB Parquet, compressed) | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
+| Language | English only | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
+| Quality | Classifier-filtered for educational content | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
+| Preprocessing | Already cleaned: URL/boilerplate removal, language filtering, near-dedup | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
+| Format | Parquet with `text` column | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
+| Redistribution | Allowed with attribution (ODC-By) | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
+| Public release compatible | ✅ Yes | VERIFIED ([HF dataset card](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu), 2026-10-01) |
 
 **Why FineWeb-Edu:**
 - Already extensively cleaned and deduplicated (saves massive preprocessing effort)
