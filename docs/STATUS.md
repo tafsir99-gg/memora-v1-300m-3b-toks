@@ -4,7 +4,7 @@
 
 ## Current Phase
 
-**Phase 4 — IMPLEMENTATION** (Stage 1: Repository Foundation — IN PROGRESS)
+**Phase 4 — IMPLEMENTATION** (Stage 2: Configuration System — IN PROGRESS)
 
 ## Approval State
 
@@ -30,8 +30,8 @@
 | Phase 1 — Architecture Design | ✅ COMPLETE (documented in ARCHITECTURE.md) |
 | Phase 2 — Write the Plan | ✅ COMPLETE (Rev 4 — Owner approved) |
 | Phase 3 — Stop for approval | ✅ COMPLETE |
-| Phase 4 — Implementation Stage 1 (repo foundation) | 🔄 IN PROGRESS |
-| Phase 4 — Implementation Stage 2 (config system) | ⬜ NOT STARTED |
+| Phase 4 — Implementation Stage 1 (repo foundation) | ✅ COMPLETE |
+| Phase 4 — Implementation Stage 2 (config system) | 🔄 IN PROGRESS |
 | Phase 4 — Implementation Stage 3+ | ⬜ NOT STARTED (STOP after Stage 2 for review) |
 | Phase 5 — Staged Validation | ⬜ NOT STARTED |
 | Phase 6 — Benchmark & Pre-commit | ⬜ NOT STARTED |
@@ -58,11 +58,10 @@
 
 ## In-Progress Items
 
-- [ ] Stage 1: Repository Foundation (pyproject.toml, ruff, mypy, CONTRIBUTING.md, CODE_OF_CONDUCT.md)
+- [ ] Stage 2: Configuration System (Pydantic models, YAML configs, tests)
 
 ## Not Started Items
 
-- [ ] Stage 2: Configuration System (blocked until Stage 1 tests pass)
 - [ ] Stage 3+: All further implementation (STOP after Stage 2 for Owner review)
 - [ ] All training (blocked on implementation)
 - [ ] All evaluation (blocked on training)
