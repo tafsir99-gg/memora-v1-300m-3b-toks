@@ -4,7 +4,7 @@
 
 ## Current Phase
 
-**Phase 4 — IMPLEMENTATION** (Stage 2: Configuration System — IN PROGRESS)
+**Phase 4 — IMPLEMENTATION** (Stage 2 Complete. WAITING FOR REVIEW before Stage 3)
 
 ## Approval State
 
@@ -31,8 +31,8 @@
 | Phase 2 — Write the Plan | ✅ COMPLETE (Rev 4 — Owner approved) |
 | Phase 3 — Stop for approval | ✅ COMPLETE |
 | Phase 4 — Implementation Stage 1 (repo foundation) | ✅ COMPLETE |
-| Phase 4 — Implementation Stage 2 (config system) | 🔄 IN PROGRESS |
-| Phase 4 — Implementation Stage 3+ | ⬜ NOT STARTED (STOP after Stage 2 for review) |
+| Phase 4 — Implementation Stage 2 (config system) | ✅ COMPLETE |
+| Phase 4 — Implementation Stage 3+ | ⬜ NOT STARTED (STOPPED for Owner review) |
 | Phase 5 — Staged Validation | ⬜ NOT STARTED |
 | Phase 6 — Benchmark & Pre-commit | ⬜ NOT STARTED |
 | Phase 7 — Full Training | ⬜ NOT STARTED |
@@ -55,14 +55,16 @@
 - [x] Risk register with verified claims and source URLs (docs/RISKS_AND_OPEN_QUESTIONS.md)
 - [x] Resolved Owner questions: FineWeb-Edu confirmed, GELU confirmed, HF repo name confirmed
 - [x] Rev 4 amendments applied and committed
+- [x] Stage 1: Repository Foundation (pyproject.toml, ruff, mypy, CONTRIBUTING.md, CODE_OF_CONDUCT.md)
+- [x] Stage 2: Configuration System (Pydantic models, YAML configs, tests)
 
 ## In-Progress Items
 
-- [ ] Stage 2: Configuration System (Pydantic models, YAML configs, tests)
+- None. Stopped for Owner review.
 
 ## Not Started Items
 
-- [ ] Stage 3+: All further implementation (STOP after Stage 2 for Owner review)
+- [ ] Stage 3+: All further implementation (WAITING for Owner review)
 - [ ] All training (blocked on implementation)
 - [ ] All evaluation (blocked on training)
 
