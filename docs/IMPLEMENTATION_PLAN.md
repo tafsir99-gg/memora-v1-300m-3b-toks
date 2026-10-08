@@ -58,6 +58,8 @@ eval = [
 - [x] `mypy memora/` passes
 - [x] `pytest tests/` runs (no tests yet, but infrastructure works)
 
+> **KAGGLE TORCH CONSTRAINT (binding):** On Kaggle, the training notebook MUST NOT reinstall or upgrade `torch`. The Kaggle GPU image ships a preinstalled, CUDA-matched `torch` (currently 2.x with CUDA 12). Reinstalling via pip would install a CPU-only or mismatched wheel, silently breaking CUDA. The notebook must import the preinstalled `torch` as-is and install only the remaining packages (`pip install -e . --no-deps` then install non-torch deps individually, or `pip install pyyaml pydantic tokenizers ...` without touching torch). Document the Kaggle torch version in the session log at startup.
+
 ### Stage 2: Configuration System
 **Estimated time: 2-3 hours**
 
@@ -469,14 +471,16 @@ Full schema with every field, type, default, range, and justification:
 | optimizer | str | "adamw" | {"adamw"} | Standard for LLM pretraining |
 | lr | float | 6e-4 | >0 | Scaled from GPT-3/Chinchilla for ~300M; within standard range |
 | min_lr | float | 6e-5 | >0, ≤lr | 10% of peak; standard end-of-decay LR |
-| warmup_steps | int | 2000 | ≥0 | ~1-2% of total steps; standard range |
+| warmup_tokens | int | 131,072,000 | ≥0 | ~131M tokens ≈ 250 steps at 524K batch. Token-based; schedule-agnostic. |
+| lr_schedule | str | "cosine" | {"cosine", "wsd"} | Default cosine until Phase 6 determines committed horizon |
+| wsd_decay_tokens | int | 100,000,000 | >0 | Only active when lr_schedule="wsd"; length of final decay window |
 | max_tokens | int | 3,000,000,000 | >0 | Project target; ~10 tokens/param |
 | weight_decay | float | 0.1 | ≥0 | Standard for transformers; excludes norms/biases |
 | beta1 | float | 0.9 | (0, 1) | Standard Adam β1 |
 | beta2 | float | 0.95 | (0, 1) | Slightly lower than default 0.999; better for LLM stability |
 | eps | float | 1e-8 | >0 | Standard Adam ε |
 | grad_clip | float | 1.0 | >0 | Standard max_norm clipping; prevents spikes |
-| global_batch_tokens | int | 524,288 | >0, % (micro_batch_size × seq_len) == 0 | ~512K tokens; in Chinchilla range for ~300M |
+| global_batch_tokens | int | 524,288 | >0, % (micro_batch_size × seq_len) == 0 | ~512K tokens; in Chinchilla range for ~300M. Phase 6 candidate: 262,144 |
 | micro_batch_size | int | 16 | ≥1 | Per-GPU batch; constrained by T4 16GB VRAM |
 | seq_len | int | 1024 | ≥1, == model.max_seq_len | Must match model |
 | precision | str | "fp16" | {"fp16", "fp32"} | fp16 for T4; no bf16 support |

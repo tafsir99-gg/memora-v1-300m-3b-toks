@@ -73,8 +73,8 @@ flowchart LR
 **Disk budget concern:** 10BT of Parquet is ~26 GB. We only need ~3-4B tokens worth of text. We'll take a deterministic subset.
 
 #### Stage 2: Filter (Lightweight, on top of FineWeb-Edu's existing filtering)
-- **Minimum document length:** ≥ 50 tokens (reject very short documents)
-- **Maximum document length:** ≤ 100,000 tokens (reject anomalously long documents)
+- **Minimum document length:** Character-count proxy before tokenizer exists: reject documents with fewer than 200 characters (~50 tokens at ~4 chars/token). After tokenizer is trained, a token-based filter is added as a post-tokenization pass.
+- **Maximum document length:** Character-count proxy: reject documents with more than 400,000 characters (~100K tokens at ~4 chars/token). Post-tokenization pass enforces token limit exactly.
 - **UTF-8 validity:** reject malformed text
 - No additional quality filtering (FineWeb-Edu is already quality-filtered)
 
@@ -250,27 +250,27 @@ Pre-tokenized shards uploaded as a Kaggle Dataset for fast access during trainin
 ### 4.3 Data Processing Location
 
 **Option A (Recommended): Process on Kaggle CPU session**
-- Kaggle CPU sessions don't consume GPU quota
+- Kaggle CPU sessions don't consume GPU quota — ASSUMED ([kaggle.com forums](https://kaggle.com), 2026-10-01; will verify by checking quota meter before and after a CPU session)
 - Adequate memory and disk for streaming processing
 - Internet access for downloading from HuggingFace
 - Output saved as Kaggle Dataset
 
-**Option B: Process locally (Mac Air)**
-- Download ~3-4B tokens of text → ~10-15 GB of Parquet → fits in 51 GB free disk
-- Tokenize locally → ~6 GB of shards → fits
-- Upload to Kaggle Dataset
-- Slower but doesn't use any Kaggle time
-
-**Recommendation:** Option A (Kaggle CPU) to avoid local disk pressure and leverage better network.
+> **Option B: NOT ALLOWED.** The Mac handles only tiny fixture data (a few MB of text for unit tests). No bulk dataset download, streaming, or bulk processing on the Mac. Violations could fill the Mac's disk and do not improve reproducibility.
 
 ## 5. Tokenizer Training Data
 
 The tokenizer is trained on a representative sample of the training data, NOT on the full dataset.
 
+FineWeb-Edu sample-10BT contains approximately **9.7 million documents** (~26 GB Parquet, verified from HF dataset card). A sample of 5-10 million documents is essentially the whole dataset, which is overkill for tokenizer training.
+
+**Corrected tokenizer sample:** Use a **~0.5-2 GB sample of text** (by bytes). This corresponds to roughly 50,000-200,000 documents depending on average document length.
+
+**Critical:** The hash-based train/val split (Stage 5) is applied **before** selecting the tokenizer sample. The tokenizer is trained exclusively on documents in the **train split**, never on val documents. This prevents the tokenizer from seeing val data before training begins.
+
 | Property | Value |
 |----------|-------|
-| Training sample size | 5-10 million documents (sampled deterministically from FineWeb-Edu) |
-| Sampling method | First N documents from a deterministic shuffle |
+| Training sample size | ~0.5-2 GB of text (bytes), sampled from train split only |
+| Sampling method | Deterministic shuffle of train-split document IDs, take first N until byte budget reached |
 | Seed | Same as data seed (42) |
 | Expected training time | ~10-30 minutes on CPU |
 

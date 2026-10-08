@@ -42,7 +42,7 @@ Every training run records:
 ### 2.2 Dependencies
 ```json
 {
-    "python_version": "3.12.x",
+    "python_version": "3.11.11 (Kaggle) or 3.14.x (local Mac); project pin: >=3.11.11,<3.15",
     "pytorch_version": "2.x.x",
     "cuda_version": "12.x",
     "cudnn_version": "8.x.x",

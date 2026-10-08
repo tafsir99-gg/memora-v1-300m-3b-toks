@@ -190,19 +190,21 @@ training:
   optimizer: "adamw"
   lr: 6.0e-4             # float, peak learning rate
   min_lr: 6.0e-5         # float, minimum LR (10% of peak)
-  warmup_steps: 2000     # int, linear warmup steps
   max_tokens: 3_000_000_000  # int, total token budget
   weight_decay: 0.1      # float
   beta1: 0.9             # float
   beta2: 0.95            # float
   eps: 1.0e-8            # float
   grad_clip: 1.0         # float, max grad norm
-  global_batch_tokens: 524_288  # int, ~512K tokens per step
+  global_batch_tokens: 524_288  # int, ~512K tokens per step. Config-driven; 262_144 is Phase 6 candidate.
   micro_batch_size: 16   # int, per-GPU micro batch
   seq_len: 1024          # int, must match model.max_seq_len
   precision: "fp16"      # str, fp16 with GradScaler for T4
   compile: false         # bool, torch.compile (measure before enabling)
   seed: 42               # int
+  lr_schedule: "cosine"  # str, "cosine" or "wsd". Default cosine until Phase 6.
+  warmup_tokens: 131_072_000  # int, ~131M tokens (~250 steps at 524K batch). Token-based, schedule-agnostic.
+  wsd_decay_tokens: 100_000_000  # int, only active when lr_schedule="wsd"
 
 checkpoint:
   dir: "checkpoints/"

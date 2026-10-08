@@ -18,8 +18,16 @@
 
 ### 1.2 Learning Rate Schedule
 
+#### Scheduler Options (config-driven)
+
+**Default:** `cosine` — until Phase 6 benchmark determines the committed training horizon.
+
+**Option 2:** `wsd` (warmup-stable-decay) — a separate short decay phase that can start at any token count, making it suitable when the final horizon is uncertain. Under WSD, LR stays at peak for the stable phase, then decays over a configurable window (e.g., ~10% of training) once the stop token count is known.
+
+**How the Phase 6 decision is made:** After measuring actual tok/s on 1×T4, if 3B tokens is confirmed feasible within the quota, keep `cosine` (max_tokens=3B). If 1B is the chosen stopping point, switch to `wsd` with a decay window of ~100M tokens starting at 900M tokens, so the model reaches min_lr at exactly 1B. Alternatively, re-initialize `cosine` with max_tokens=1B before the final session.
+
 ```
-LR
+LR (cosine, max_tokens=3B)
  ↑
  |    /‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\
  |   /                             \
@@ -27,43 +35,58 @@ LR
  | /                                 \
  |/                                   \___________
  +────────────────────────────────────────────────→ tokens
- 0    warmup          cosine decay         min_lr
-      2000 steps      → max_tokens         (hold)
+ 0    warmup (~131M)   cosine decay        min_lr
+      ~250 steps       → 3B tokens         (hold)
 ```
 
-| Parameter | Value | Justification |
-|-----------|-------|---------------|
-| Peak LR | 6e-4 | Scaled from GPT-3 heuristics for ~300M model; within [3e-4, 1e-3] standard range |
-| Min LR | 6e-5 | 10% of peak; standard end-of-decay floor |
-| Warmup | 2,000 steps | ~1% of total steps (assuming ~200K total steps for 3B tokens). Prevents early instability. |
-| Schedule shape | Cosine decay | Proven, smooth, standard. Better than linear decay at the tail. |
-| Schedule domain | **Token-based, not step-based** | Critical: the schedule is defined over total tokens, not steps. This makes it session-independent and correct under gradient accumulation changes. |
+> **Note on the 1B milestone under cosine with max_tokens=3B:** At 1B tokens the schedule is ~33% through its decay; LR ≈ peak − 17% ≈ ~83% of peak. The model is not annealed. This is acceptable for an intermediate checkpoint and loss measurement, but means the 1B checkpoint cannot be directly compared to a fully-annealed model. If the Owner wants a fully-annealed 1B model, switch to `wsd` or re-run cosine with max_tokens=1B.
 
-**How the schedule works across sessions:**
+| Parameter | Config key | Default value | Justification |
+|-----------|-----------|---------------|---------------|
+| Peak LR | `lr.peak` | `6e-4` | GPT-3 heuristic for ~300M; within [3e-4, 1e-3] standard range |
+| Min LR | `lr.min` | `6e-5` | 10% of peak; standard end-of-decay floor |
+| Warmup tokens | `lr.warmup_tokens` | `131_072_000` (~131M) | ≈250 steps at 524K tokens/step ≈ 4.4% of 3B total tokens. Prevents early instability. Token-based so it is step-count agnostic. |
+| Warmup steps (derived) | — | ≈250 | = warmup_tokens / global_batch_tokens |
+| Schedule shape | `lr.schedule` | `"cosine"` | `"cosine"` or `"wsd"`. Default stays cosine until Phase 6. |
+| WSD decay window | `lr.wsd_decay_tokens` | `100_000_000` | Only active when schedule=wsd. |
+| Schedule domain | **Token-based** | — | Defined over total tokens, not steps. Session-independent; correct under gradient accumulation changes. |
 
-The cosine decay is parameterized by `tokens_seen` (restored from checkpoint), not by step count:
+**How the cosine schedule works across sessions:**
+
+The decay is parameterized by `tokens_seen` (restored from checkpoint):
 
 ```python
 if tokens_seen < warmup_tokens:
     lr = peak_lr * (tokens_seen / warmup_tokens)
-else:
+elif schedule == "cosine":
     progress = (tokens_seen - warmup_tokens) / (max_tokens - warmup_tokens)
     progress = min(progress, 1.0)
     lr = min_lr + 0.5 * (peak_lr - min_lr) * (1 + cos(π * progress))
+elif schedule == "wsd":
+    if tokens_seen < stable_end_tokens:
+        lr = peak_lr  # stable phase
+    else:
+        decay_progress = (tokens_seen - stable_end_tokens) / wsd_decay_tokens
+        decay_progress = min(decay_progress, 1.0)
+        lr = min_lr + (peak_lr - min_lr) * (1 - decay_progress)  # linear decay
 ```
 
-If `max_tokens` changes (e.g., we decide to stop at 1B instead of 3B, or extend to 4B), the decay stretches or compresses. If we continue past `max_tokens`, LR stays at `min_lr`.
+If continuing past `max_tokens` (cosine), LR stays at `min_lr`.
 
 ### 1.3 Batch Size
 
-| Parameter | Value | Justification |
-|-----------|-------|---------------|
-| Global batch size (tokens) | 524,288 (~512K) | In the Chinchilla range for ~300M models. ~512 sequences × 1024 tokens. |
-| Micro-batch size | 16 | Per-GPU; 16 × 1024 = 16,384 tokens per micro-step. ESTIMATE — must verify against T4 memory. |
-| Gradient accumulation steps | Computed | = global_batch_tokens / (micro_batch_size × seq_len × world_size) |
-| Sequence length | 1024 | Matches model.max_seq_len |
+All batch parameters are **config-driven**. The table below shows defaults; Phase 6 may change them.
 
-**Example configurations:**
+| Parameter | Config key | Default | Justification |
+|-----------|-----------|---------|---------------|
+| Global batch size (tokens) | `batch.global_tokens` | `524_288` (~512K) | Chinchilla range for ~300M models. ~512 seqs × 1024 tokens. |
+| Micro-batch size | `batch.micro_size` | `16` | Per-GPU; 16 × 1024 = 16,384 tokens per micro-step. ESTIMATE — must verify against T4 memory. |
+| Gradient accumulation steps | `batch.grad_accum` | Computed | = global_tokens / (micro_size × seq_len × world_size) |
+| Sequence length | `model.seq_len` | `1024` | Matches model.max_seq_len |
+
+> **Phase 6 candidate:** `global_tokens = 262_144` (~256K). A smaller batch may raise MFU by reducing gradient accumulation overhead. The Phase 6 benchmark will compare MFU and stable training at both 262K and 524K before committing.
+
+**Example configurations (default 524K):**
 
 | GPU Config | Micro BS | Accum Steps | Effective Batch (tokens) |
 |-----------|----------|-------------|-------------------------|
@@ -179,10 +202,10 @@ After Phase 6 benchmark (measured tok/s on 1×T4):
 | < 3,500 | < 10% | 3B infeasible | ❌ **Stop.** Investigate: is this a software bug? Wrong batch size? Measure and fix before burning quota. |
 
 **Schedule adjustment if target changes:**
-- LR cosine decay is defined by `max_tokens` in config
-- Changing `max_tokens` stretches/compresses the decay proportionally
-- If stopping early at 1B: re-set `max_tokens=1_000_000_000`, the model still sees a full cosine decay
-- If extending past 3B: continue at `min_lr` (floor hold) — model keeps learning, just slowly
+- LR schedule is defined by `max_tokens` (and `schedule` type) in config
+- **Cosine + stop at 1B:** re-set `max_tokens=1_000_000_000` before the final session's run, OR switch to `wsd` with `stable_end_tokens=900_000_000` and `wsd_decay_tokens=100_000_000`. Both give a fully-annealed 1B model.
+- **Cosine + extend past 3B:** continue at `min_lr` (floor hold)
+- **WSD:** start decay at any chosen token count; length of decay window controls how sharp the anneal is
 
 ## 4. Training Milestones
 
@@ -331,13 +354,25 @@ Session N+1 (consume checkpoint):
 
 ## 8. Multi-Session Training Protocol
 
-```
-Session 1: steps 0 → ~1900 (warm-up through ~1B tokens)
-Session 2: steps ~1900 → ~3800 (~1B → ~2B tokens)
-Session 3: steps ~3800 → ~5722 (~2B → ~3B tokens)
-```
+> **ESTIMATE.** Session counts and token coverage are derived from throughput tables. Real values depend on measured tok/s from Phase 6.
 
-(Session count assumes ~25% MFU on 1×T4, ~10.5h effective training per session, ~3.1h/session for overhead.)
+**Throughput basis (Target MFU=25%, 1×T4):** 9,028 tok/s × 10.5h × 3600 s/h ≈ **341M tokens per effective session**.
+
+**Session map (3B token target):**
+
+| Sessions | Tokens per session (est.) | Cumulative tokens | Sessions needed for 1B | Sessions needed for 3B |
+|----------|--------------------------|-------------------|------------------------|------------------------|
+| Plausible Low (10%, 3,611 tok/s) | ~136M | — | ~7-8 sessions | ~22 sessions |
+| Plausible Base (15%, 5,417 tok/s) | ~205M | — | ~5 sessions | ~15 sessions |
+| Conservative (20%, 7,222 tok/s) | ~273M | — | ~4 sessions | ~11 sessions |
+| Target (25%, 9,028 tok/s) | ~341M | — | ~3 sessions | ~9 sessions |
+| Optimistic High (30%, 10,833 tok/s) | ~409M | — | ~3 sessions | ~7-8 sessions |
+
+**Committed milestone:** 1B tokens (~3 sessions at 25% MFU, more at lower MFU). **3B tokens is conditional** on Phase 6 benchmark confirming sufficient throughput.
+
+**Step reference (at 524K tokens/step):**
+- 1B tokens ≈ 1,907 steps
+- 3B tokens ≈ 5,722 steps
 
 Each session:
 1. Verify GPU, CUDA, PyTorch versions match expectations

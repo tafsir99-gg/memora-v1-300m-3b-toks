@@ -13,7 +13,7 @@
 | R7 | HF Hub upload fails (network issue) | Low | Medium | Retry logic (3×); fallback to Kaggle output persistence; checkpoint remains valid locally | MITIGATED BY DESIGN |
 | R8 | Memory OOM on T4 with planned micro-batch size | Medium | Low | Phase 6 memory sweep; reduce micro_batch_size and increase accumulation | MITIGATED BY DESIGN |
 | R9 | Benchmark contamination in FineWeb-Edu | High | Low | Document contamination risk honestly; cannot fully decontaminate web data; run contamination check for exact matches | ACCEPTED |
-| R10 | Python version mismatch between local (3.14) and Kaggle (3.11) | Low | Medium | Project pinned to `>=3.11`; developed/tested on both; CI uses 3.11 | MITIGATED BY DESIGN |
+| R10 | Python version mismatch between local (3.14) and Kaggle (3.11.11) | Low | Medium | Project pinned to `>=3.11.11, <3.15`; developed/tested on both; use `uv venv --python 3.11.11` for parity | MITIGATED BY DESIGN |
 | R11 | torch.compile crashes or is slower on T4 | Medium | Low | Default: compile=false; test in Phase 6; easy to toggle | MITIGATED BY DESIGN |
 | R12 | Tokenizer training produces suboptimal vocab | Low | Low | Byte-level BPE is robust; 32k vocab is standard; measure tokens-per-byte | ACCEPTED |
 | R13 | Data processing takes too long on Kaggle CPU | Low | Medium | Stream-process; only need ~3.5B tokens; estimate <2h; can use local Mac as fallback | NEEDS-ESTIMATION |
@@ -86,14 +86,14 @@ Every factual claim about external systems, with verification status:
 | D18 | `uv` for local package management | pip, conda, poetry | Already installed; fast; compatible with pip; good lockfile support | VERIFIED (uv available on system) |
 | D19 | Apache-2.0 for code | MIT, GPL | Already committed in repo; permissive; compatible with most uses | VERIFIED (LICENSE file exists) |
 | D20 | ODC-By 1.0 acknowledgment for data | — | FineWeb-Edu requires attribution; will include in README and model card | VERIFIED (dataset license) |
-| D21 | **Default 1×T4** (not 2×T4) | 2×T4 | 2×T4 costs 2× quota but gives <2× throughput → net quota loss. 1×T4 is always more quota-efficient. | VERIFIED (quota rate confirmed 2026-10-01) |
+| D21 | **Default 1×T4** (not 2×T4) | 2×T4 | 2×T4 costs 2× quota but gives <2× throughput → net quota loss. 1×T4 is always more quota-efficient. | ASSUMED (quota rate pending Phase 6 measurement) |
 | D22 | **Python >=3.11.11, <3.15** project pin | >=3.11.11, <3.15 | Kaggle runs 3.11.11; local Mac has 3.14. Excludes <3.11.11, while PyTorch 2.10+ wheels allow up to 3.14 | VERIFIED |
 
 ## 6. Contradictions and Ambiguities in the Spec (Identified in Phase 0)
 
 | # | Issue | Resolution |
 |---|-------|------------|
-| C1 | Spec says 2×T4 "may scale poorly" and suggests verifying quota rate → **Verified: 2×T4 costs 2× quota.** Combined with <100% DDP scaling, this makes 1×T4 always more quota-efficient. | Default to 1×T4. Still benchmark 2×T4 in Phase 6 for completeness (wall-clock speed matters for session-limited work). |
+| C1 | Spec says 2×T4 "may scale poorly" and suggests verifying quota rate → **Community reports: 2×T4 costs 2× quota.** Combined with <100% DDP scaling, this makes 1×T4 always more quota-efficient. | Default to 1×T4. ASSUMED pending Phase 6 measurement (quota meter check). |
 | C2 | Spec says "~30 GPU-hours/week" but notes "may vary" | VERIFIED: 30h/week standard quota. GPU availability may be scarce (Sep 2026 reports). |
 | C3 | Spec says "fp16 stability issues" → must use GradScaler | Accounted for: GradScaler enabled, fp32 loss computation, grad clipping, loss-scale monitoring. |
 | C4 | Spec mentions "earlier byte-level project" to "reuse ideas from" | No earlier project found in the repo or adjacent directories. Nothing to reuse. |
