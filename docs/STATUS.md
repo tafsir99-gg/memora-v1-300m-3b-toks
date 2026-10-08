@@ -4,7 +4,7 @@
 
 ## Current Phase
 
-**Phase 4 — IMPLEMENTATION** (Stage 2 Complete. WAITING FOR REVIEW before Stage 3)
+**Phase 4 — IMPLEMENTATION** (Stage 3 Complete. Stage 4: Data Pipeline — IN PROGRESS)
 
 ## Approval State
 
@@ -32,7 +32,8 @@
 | Phase 3 — Stop for approval | ✅ COMPLETE |
 | Phase 4 — Implementation Stage 1 (repo foundation) | ✅ COMPLETE |
 | Phase 4 — Implementation Stage 2 (config system) | ✅ COMPLETE |
-| Phase 4 — Implementation Stage 3+ | ⬜ NOT STARTED (STOPPED for Owner review) |
+| Phase 4 — Implementation Stage 3 (tokenizer) | ✅ COMPLETE |
+| Phase 4 — Implementation Stage 4 (data pipeline) | 🔄 IN PROGRESS |
 | Phase 5 — Staged Validation | ⬜ NOT STARTED |
 | Phase 6 — Benchmark & Pre-commit | ⬜ NOT STARTED |
 | Phase 7 — Full Training | ⬜ NOT STARTED |
@@ -56,11 +57,12 @@
 - [x] Resolved Owner questions: FineWeb-Edu confirmed, GELU confirmed, HF repo name confirmed
 - [x] Rev 4 amendments applied and committed
 - [x] Stage 1: Repository Foundation (pyproject.toml, ruff, mypy, CONTRIBUTING.md, CODE_OF_CONDUCT.md)
-- [x] Stage 2: Configuration System (Pydantic models, YAML configs, tests)
+- [x] Stage 2: Configuration System (Pydantic models, YAML configs, 25 tests)
+- [x] Stage 3: Tokenizer (BPE trainer, wrapper, 14 tests: round-trip, special IDs, determinism, sha256)
 
 ## In-Progress Items
 
-- None. Stopped for Owner review.
+- [ ] Stage 4: Data Pipeline (hash split, dedup, sharding, manifest, resumable loader)
 
 ## Not Started Items
 
