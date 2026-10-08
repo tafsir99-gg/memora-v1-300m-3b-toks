@@ -1,0 +1,89 @@
+[project]
+name = "memora"
+version = "0.1.0"
+description = "Memora v1 — 300M parameter decoder-only English LLM trained on 3B tokens"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11.11, <3.15"  # Kaggle runs 3.11.11; local Mac has 3.14; PyTorch 2.10+ provides 3.14 wheels
+
+dependencies = [
+    "torch>=2.2.0",           # Core framework
+    "pyyaml>=6.0",            # Config loading
+    "pydantic>=2.0",          # Config validation
+    "tokenizers>=0.19",       # HuggingFace tokenizers (Rust-backed)
+    "numpy>=1.26",            # Array ops
+    "tqdm>=4.66",             # Progress bars
+    "huggingface-hub>=0.20",  # Model/checkpoint upload/download
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.3",
+    "mypy>=1.8",
+    "matplotlib>=3.8",        # Plotting training curves only
+]
+eval = [
+    "lm-eval>=0.4",           # lm-evaluation-harness
+]
+
+[project.urls]
+Homepage = "https://github.com/tafsir99-gg/memora-v1-300m-3b-toks"
+Repository = "https://github.com/tafsir99-gg/memora-v1-300m-3b-toks"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["memora*"]
+
+# ---------------------------------------------------------------------------
+# ruff — linter + formatter
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["memora"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ---------------------------------------------------------------------------
+# mypy — type checking
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true   # torch stubs not always available
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
