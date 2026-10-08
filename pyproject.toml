@@ -4,13 +4,14 @@ version = "0.1.0"
 description = "Memora v1 — 300M parameter decoder-only English LLM trained on 3B tokens"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.11.11, <3.15"  # Kaggle runs 3.11.11; local Mac has 3.14; PyTorch 2.10+ provides 3.14 wheels
+# Kaggle runs 3.11.11; local Mac has 3.14; PyTorch 2.10+ provides wheels for both.
+requires-python = ">=3.11.11, <3.15"
 
 dependencies = [
-    "torch>=2.2.0",           # Core framework
+    "torch>=2.2.0",           # Core framework. On Kaggle: do NOT reinstall; use preinstalled.
     "pyyaml>=6.0",            # Config loading
     "pydantic>=2.0",          # Config validation
-    "tokenizers>=0.19",       # HuggingFace tokenizers (Rust-backed)
+    "tokenizers>=0.19",       # HuggingFace tokenizers (Rust-backed BPE)
     "numpy>=1.26",            # Array ops
     "tqdm>=4.66",             # Progress bars
     "huggingface-hub>=0.20",  # Model/checkpoint upload/download
@@ -21,15 +22,34 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.3",
     "mypy>=1.8",
-    "matplotlib>=3.8",        # Plotting training curves only
+    "matplotlib>=3.8",        # Plotting training curves only (never downloaded on Kaggle)
 ]
 eval = [
-    "lm-eval>=0.4",           # lm-evaluation-harness
+    "lm-eval>=0.4",           # lm-evaluation-harness; install only for eval runs
+]
+# Data build dependencies — ONLY for the Kaggle CPU data-processing session.
+# Do NOT install on Mac. Any code that imports these must be import-guarded:
+#   try: import datasets; HAS_DATASETS = True
+#   except ImportError: HAS_DATASETS = False
+# Tests use plain-text fixtures in tests/fixtures/ and never import this extra.
+data = [
+    "datasets>=2.18",         # HuggingFace datasets for FineWeb-Edu streaming
+    "pyarrow>=15.0",          # Parquet reading used by datasets
 ]
 
 [project.urls]
 Homepage = "https://github.com/tafsir99-gg/memora-v1-300m-3b-toks"
 Repository = "https://github.com/tafsir99-gg/memora-v1-300m-3b-toks"
+
+# ---------------------------------------------------------------------------
+# Kaggle installation note (BINDING RULE)
+# ---------------------------------------------------------------------------
+# On Kaggle GPU notebooks, the image ships a CUDA-matched torch. NEVER run:
+#   pip install -e .          ← this would reinstall torch (CPU-only wheel), breaking CUDA
+# Instead:
+#   pip install --no-deps -e .
+#   pip install pyyaml pydantic tokenizers numpy tqdm huggingface-hub
+# Log the preinstalled torch version at session start: import torch; print(torch.__version__)
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
@@ -86,4 +106,8 @@ testpaths = ["tests"]
 addopts = "-v --tb=short"
 filterwarnings = [
     "ignore::DeprecationWarning",
+]
+markers = [
+    "gpu: mark test as requiring a CUDA GPU (skip on CPU-only machines)",
+    "slow: mark test as slow (excluded from quick CI runs)",
 ]

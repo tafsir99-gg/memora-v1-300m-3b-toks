@@ -489,13 +489,28 @@ Full schema with every field, type, default, range, and justification:
 
 ### checkpoint.*
 
+Checkpoints are saved on **wall-clock intervals**, not step intervals. At 524,288 tokens/step
+and 15–30% MFU on one T4 (ESTIMATE from plan throughput tables: 5,500–11,000 tok/s, so
+48–95 s/step), a step-based interval of 500 steps = 6–13 hours between checkpoints, which
+contradicts R6. Wall-clock intervals are used instead.
+
 | Field | Type | Default | Range | Justification |
 |-------|------|---------|-------|---------------|
 | dir | str | "checkpoints/" | valid path | Checkpoint output directory |
-| save_interval_steps | int | 500 | ≥1 | ~8-10 minutes at expected throughput; reasonable frequency |
-| keep_last_n | int | 3 | ≥1 | Retention; balances disk vs. safety |
-| save_optimizer | bool | true | — | Required for exact resume |
-| lightweight_interval_steps | int | 100 | ≥1 | Weights-only for quick recovery |
+| save_full_interval_minutes | int | 30 | ≥1 | Full checkpoint every 30 min (ESTIMATE: ~19–37 steps at 1×T4) |
+| save_lightweight_interval_minutes | int | 10 | ≥1 | Weights-only snapshot every 10 min |
+| hf_upload_interval_minutes | int | 60 | ≥1 | Upload to HF Hub every 60 min |
+| keep_full_n | int | 2 | ≥1 | Resumable checkpoints retained on disk |
+| keep_lightweight_n | int | 3 | ≥1 | Lightweight snapshots retained on disk |
+| keep_best | bool | true | — | Always retain best-val-loss checkpoint regardless of age |
+| save_optimizer | bool | true | — | Include optimizer + scaler + RNG state for exact resume |
+
+### session.*
+
+| Field | Type | Default | Range | Justification |
+|-------|------|---------|-------|---------------|
+| max_wall_clock_minutes | int | 690 | ≥1 | Kaggle 12h cap = 720 min; 30 min reserved for setup + teardown |
+| shutdown_grace_minutes | int | 10 | ≥1 | Reserved at end of session for orderly checkpoint + HF upload |
 
 ### data.*
 
@@ -512,12 +527,13 @@ Full schema with every field, type, default, range, and justification:
 
 | Field | Type | Default | Range | Justification |
 |-------|------|---------|-------|---------------|
-| val_interval_steps | int | 500 | ≥1 | Same as checkpoint interval; natural pairing |
+| val_interval_minutes | int | 30 | ≥1 | Run val every 30 min, aligned with full checkpoint interval (ESTIMATE) |
 | val_tokens | int | 10,000,000 | ≥1 | ~10M tokens per val; ~1 minute compute |
-| sample_interval_steps | int | 1000 | ≥1 | Text samples for qualitative tracking |
+| sample_interval_minutes | int | 60 | ≥1 | Text samples for qualitative tracking every 60 min |
 | sample_prompts | list[str] | (3 fixed) | ≥1 item | Fixed prompts for reproducible comparison |
 | sample_temperature | float | 0.8 | >0 | Standard generation temperature |
 | sample_top_k | int | 50 | ≥1 | Standard top-k |
+| sample_top_p | float | 1.0 | (0, 1] | Nucleus sampling p; 1.0 = disabled |
 | sample_max_tokens | int | 128 | ≥1 | Short samples for logging |
 
 ## 4. Training Flow Diagram

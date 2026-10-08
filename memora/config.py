@@ -2,10 +2,12 @@ import pathlib
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ModelConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     d_model: int = Field(default=960, gt=0)
     n_layers: int = Field(default=24, gt=0)
     n_heads: int = Field(default=15, gt=0)
@@ -25,10 +27,17 @@ class ModelConfig(BaseModel):
             raise ValueError(
                 f"d_model ({self.d_model}) must be divisible by n_heads ({self.n_heads})"
             )
+        head_dim = self.d_model // self.n_heads
+        if head_dim % 2 != 0:
+            raise ValueError(
+                f"head_dim ({head_dim}) must be even (required for RoPE sin/cos split)"
+            )
         return self
 
 
 class TrainingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     optimizer: Literal["adamw"] = "adamw"
     lr: float = Field(default=6e-4, gt=0)
     min_lr: float = Field(default=6e-5, gt=0)
@@ -58,30 +67,158 @@ class TrainingConfig(BaseModel):
                 f"global_batch_tokens ({self.global_batch_tokens}) must be a multiple of "
                 f"micro_batch_size * seq_len ({micro_tokens})"
             )
+        if self.warmup_tokens >= self.max_tokens:
+            raise ValueError(
+                f"warmup_tokens ({self.warmup_tokens}) must be < max_tokens ({self.max_tokens})"
+            )
+        if self.lr_schedule == "wsd":
+            schedule_tokens = self.warmup_tokens + self.wsd_decay_tokens
+            if schedule_tokens > self.max_tokens:
+                raise ValueError(
+                    f"For wsd schedule: warmup_tokens ({self.warmup_tokens}) + "
+                    f"wsd_decay_tokens ({self.wsd_decay_tokens}) = {schedule_tokens} "
+                    f"exceeds max_tokens ({self.max_tokens})"
+                )
         return self
+
+    def grad_accum_steps(self, world_size: int) -> int:
+        """Return gradient accumulation steps for a given DDP world size.
+
+        Raises ValueError if global_batch_tokens is not divisible by
+        micro_batch_size * seq_len * world_size (would cause uneven gradient accumulation).
+        """
+        if world_size < 1:
+            raise ValueError(f"world_size must be >= 1, got {world_size}")
+        per_gpu_tokens = self.micro_batch_size * self.seq_len
+        total_micro_tokens = per_gpu_tokens * world_size
+        if self.global_batch_tokens % total_micro_tokens != 0:
+            raise ValueError(
+                f"global_batch_tokens ({self.global_batch_tokens}) is not divisible by "
+                f"micro_batch_size * seq_len * world_size "
+                f"({self.micro_batch_size} * {self.seq_len} * {world_size} = {total_micro_tokens})"
+            )
+        return self.global_batch_tokens // total_micro_tokens
 
 
 class CheckpointConfig(BaseModel):
+    """Checkpoint retention and scheduling.
+
+    Retention policy (per the plan):
+      - keep_full_n: resumable checkpoints (model + optimizer + scaler + RNG state)
+      - keep_lightweight_n: weights-only snapshots for quick inspection
+      - keep_best: keep the checkpoint with best val loss regardless of age
+
+    Scheduling (wall-clock based, not step-based):
+      At 524,288 tokens/step and ~15–30% MFU on one T4 (ESTIMATE from plan throughput tables):
+        tokens/s ≈ 15–30% × 65e12 FLOPS / (6 × 297e6 params) ≈ 5,500–11,000 tok/s
+        step time ≈ 524,288 / (5,500–11,000) ≈ 48–95 seconds per step
+      Therefore a step-based interval of 500 steps = 6–13 hours between checkpoints
+      (contradicts R6: "worst case lose ~5 min of training").
+
+      Wall-clock intervals used instead:
+        save_full_interval_minutes=30  → full checkpoint every ~30 min
+        save_lightweight_interval_minutes=10  → lightweight every ~10 min
+        hf_upload_interval_minutes=60  → upload to HF Hub every ~60 min
+
+      Session budget:
+        session.max_wall_clock_minutes=690  → 11.5h of a 12h Kaggle session
+        session.shutdown_grace_minutes=10   → reserved for orderly checkpoint + upload
+
+      These are ESTIMATES. Actual step rate measured in Phase 6 benchmark.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     dir: str = "checkpoints/"
-    save_interval_steps: int = Field(default=500, ge=1)
-    keep_last_n: int = Field(default=3, ge=1)
-    save_optimizer: bool = True
-    lightweight_interval_steps: int = Field(default=100, ge=1)
+    save_full_interval_minutes: int = Field(
+        default=30,
+        ge=1,
+        description=(
+            "Save a full (resumable) checkpoint every N minutes. "
+            "ESTIMATE: at ~48-95s/step on 1xT4, this is roughly every 19-37 steps."
+        ),
+    )
+    save_lightweight_interval_minutes: int = Field(
+        default=10,
+        ge=1,
+        description="Save weights-only snapshot every N minutes.",
+    )
+    hf_upload_interval_minutes: int = Field(
+        default=60,
+        ge=1,
+        description="Upload latest full checkpoint to HF Hub every N minutes.",
+    )
+    keep_full_n: int = Field(
+        default=2,
+        ge=1,
+        description="Number of full (resumable) checkpoints to retain on disk.",
+    )
+    keep_lightweight_n: int = Field(
+        default=3,
+        ge=1,
+        description="Number of lightweight (weights-only) snapshots to retain on disk.",
+    )
+    keep_best: bool = Field(
+        default=True,
+        description="Always retain the checkpoint with the best validation loss.",
+    )
+    save_optimizer: bool = Field(
+        default=True,
+        description="Include optimizer + scaler + RNG state in full checkpoints.",
+    )
+
+
+class SessionConfig(BaseModel):
+    """Kaggle session time budget."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    max_wall_clock_minutes: int = Field(
+        default=690,
+        ge=1,
+        description=(
+            "Soft limit on total session run time (minutes). "
+            "Kaggle sessions cap at 12h = 720 min; leave 30 min for setup + teardown."
+        ),
+    )
+    shutdown_grace_minutes: int = Field(
+        default=10,
+        ge=1,
+        description=(
+            "Minutes reserved at end of session for checkpointing and HF Hub upload "
+            "before the session expires."
+        ),
+    )
 
 
 class DataConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     dataset_name: str = "fineweb-edu-sample"
     tokenizer_path: str = "tokenizer/"
     shard_dir: str = "data/shards/"
-    val_ratio: float = Field(default=0.005, ge=0.0, lt=1.0)
+    val_ratio: float = Field(default=0.005, gt=0.0, lt=1.0)
     num_workers: int = Field(default=4, ge=0)
     seed: int = 42
 
 
 class EvalConfig(BaseModel):
-    val_interval_steps: int = Field(default=500, ge=1)
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    val_interval_minutes: int = Field(
+        default=30,
+        ge=1,
+        description=(
+            "Run validation every N minutes (aligned with save_full_interval_minutes). "
+            "At ~48-95s/step on 1xT4 this is roughly every 19-37 steps (ESTIMATE)."
+        ),
+    )
     val_tokens: int = Field(default=10_000_000, gt=0)
-    sample_interval_steps: int = Field(default=1000, ge=1)
+    sample_interval_minutes: int = Field(
+        default=60,
+        ge=1,
+        description="Generate text samples for qualitative tracking every N minutes.",
+    )
     sample_prompts: list[str] = Field(
         default_factory=lambda: [
             "The meaning of life is",
@@ -91,16 +228,27 @@ class EvalConfig(BaseModel):
     )
     sample_temperature: float = Field(default=0.8, gt=0.0)
     sample_top_k: int = Field(default=50, ge=1)
+    sample_top_p: float = Field(default=1.0, ge=0.0, le=1.0)
     sample_max_tokens: int = Field(default=128, ge=1)
+
+    @model_validator(mode="after")
+    def validate_eval(self) -> "EvalConfig":
+        if self.sample_top_p <= 0.0:
+            raise ValueError("sample_top_p must be > 0")
+        return self
 
 
 class LoggingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     log_interval_steps: int = Field(default=10, ge=1)
     log_dir: str = "runs/"
     format: Literal["jsonl"] = "jsonl"
 
 
 class DistributedConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     backend: Literal["nccl", "gloo"] = "nccl"
     strategy: Literal["ddp"] = "ddp"
 
@@ -108,9 +256,12 @@ class DistributedConfig(BaseModel):
 class MemoraConfig(BaseModel):
     """Top-level config combining all sections."""
 
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     model: ModelConfig = Field(default_factory=ModelConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
     checkpoint: CheckpointConfig = Field(default_factory=CheckpointConfig)
+    session: SessionConfig = Field(default_factory=SessionConfig)
     data: DataConfig = Field(default_factory=DataConfig)
     evaluation: EvalConfig = Field(default_factory=EvalConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)

@@ -16,7 +16,7 @@ training:
   optimizer: "adamw"
   lr: 6.0e-4
   min_lr: 6.0e-5
-  warmup_tokens: 131072000
+  warmup_tokens: 131072000     # ~131M tokens ≈ 250 steps at 524k batch
   lr_schedule: "cosine"
   wsd_decay_tokens: 100000000
   max_tokens: 3000000000
@@ -25,7 +25,7 @@ training:
   beta2: 0.95
   eps: 1.0e-8
   grad_clip: 1.0
-  global_batch_tokens: 262144
+  global_batch_tokens: 524288  # approved plan value; 262144 is Phase-6 candidate only
   micro_batch_size: 16
   seq_len: 1024
   precision: "fp16"
@@ -34,10 +34,17 @@ training:
 
 checkpoint:
   dir: "checkpoints/"
-  save_interval_steps: 500
-  keep_last_n: 3
+  save_full_interval_minutes: 30
+  save_lightweight_interval_minutes: 10
+  hf_upload_interval_minutes: 60
+  keep_full_n: 2
+  keep_lightweight_n: 3
+  keep_best: true
   save_optimizer: true
-  lightweight_interval_steps: 100
+
+session:
+  max_wall_clock_minutes: 690
+  shutdown_grace_minutes: 10
 
 data:
   dataset_name: "fineweb-edu-sample"
@@ -48,15 +55,16 @@ data:
   seed: 42
 
 evaluation:
-  val_interval_steps: 500
+  val_interval_minutes: 30
   val_tokens: 10000000
-  sample_interval_steps: 1000
+  sample_interval_minutes: 60
   sample_prompts:
     - "The meaning of life is"
     - "In a groundbreaking discovery, scientists"
     - "Once upon a time in a land far away"
   sample_temperature: 0.8
   sample_top_k: 50
+  sample_top_p: 1.0
   sample_max_tokens: 128
 
 logging:

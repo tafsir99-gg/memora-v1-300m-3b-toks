@@ -1,7 +1,7 @@
 model:
   d_model: 128
   n_layers: 4
-  n_heads: 2
+  n_heads: 2           # head_dim = 64 (even, ok for RoPE)
   d_ff: 512
   vocab_size: 1024
   max_seq_len: 128
@@ -25,6 +25,9 @@ training:
   beta2: 0.95
   eps: 1.0e-8
   grad_clip: 1.0
+  # global_batch_tokens = 1024 = micro_batch_size(2) * seq_len(128) * grad_accum(4) * 1 GPU
+  # grad_accum_steps(world_size=1) = 1024 / (2*128*1) = 4
+  # grad_accum_steps(world_size=2) = 1024 / (2*128*2) = 2
   global_batch_tokens: 1024
   micro_batch_size: 2
   seq_len: 128
@@ -34,10 +37,17 @@ training:
 
 checkpoint:
   dir: "checkpoints/"
-  save_interval_steps: 50
-  keep_last_n: 3
+  save_full_interval_minutes: 5
+  save_lightweight_interval_minutes: 2
+  hf_upload_interval_minutes: 10
+  keep_full_n: 2
+  keep_lightweight_n: 3
+  keep_best: true
   save_optimizer: true
-  lightweight_interval_steps: 10
+
+session:
+  max_wall_clock_minutes: 10
+  shutdown_grace_minutes: 1
 
 data:
   dataset_name: "test-data"
@@ -48,13 +58,14 @@ data:
   seed: 42
 
 evaluation:
-  val_interval_steps: 50
+  val_interval_minutes: 5
   val_tokens: 1000
-  sample_interval_steps: 50
+  sample_interval_minutes: 10
   sample_prompts:
     - "Test"
   sample_temperature: 0.8
   sample_top_k: 10
+  sample_top_p: 1.0
   sample_max_tokens: 10
 
 logging:

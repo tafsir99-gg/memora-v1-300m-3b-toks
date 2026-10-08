@@ -9,7 +9,7 @@
 | R3 | Kaggle GPU unavailability (scarcity reported Sep 2026) | Medium | High | Schedule sessions at off-peak times; have single-GPU fallback config; track availability patterns | OPEN |
 | R4 | Checkpoint corruption during session termination | Low | High | Atomic writes (temp+rename), integrity validation, fall-back to previous valid checkpoint, retention policy | MITIGATED BY DESIGN |
 | R5 | DDP scaling efficiency worse than assumed (<<85%) | Medium | Medium | Phase 6 benchmark; 1×T4 fallback if scaling < 70%; since 1×T4 is default, DDP scaling is less critical | OPEN |
-| R6 | Kaggle session terminates unexpectedly (before graceful shutdown) | Medium | Medium | Frequent lightweight checkpoints (every 100 steps); worst case lose ~5 min of training | MITIGATED BY DESIGN |
+| R6 | Kaggle session terminates unexpectedly (before graceful shutdown) | Medium | Medium | Wall-clock checkpointing: full checkpoint every 30 min, lightweight every 10 min (ESTIMATE; ~19–37 steps at 1×T4). Worst case: lose ≤10 min of training. Session budget: max_wall_clock_minutes=690, shutdown_grace_minutes=10. | MITIGATED BY DESIGN |
 | R7 | HF Hub upload fails (network issue) | Low | Medium | Retry logic (3×); fallback to Kaggle output persistence; checkpoint remains valid locally | MITIGATED BY DESIGN |
 | R8 | Memory OOM on T4 with planned micro-batch size | Medium | Low | Phase 6 memory sweep; reduce micro_batch_size and increase accumulation | MITIGATED BY DESIGN |
 | R9 | Benchmark contamination in FineWeb-Edu | High | Low | Document contamination risk honestly; cannot fully decontaminate web data; run contamination check for exact matches | ACCEPTED |
