@@ -134,8 +134,9 @@ def test_initialization_stats(tiny_config: MemoraConfig):
     scale = 1.0 / math.sqrt(2.0 * tiny_config.model.n_layers)
     expected_proj_std = tiny_config.model.init_std * scale
 
-    from memora.model import Block
     import typing
+
+    from memora.model import Block
     block = typing.cast(Block, model.layers[0])
     attn_proj_std = block.attn.proj.weight.std().item()
     assert math.isclose(attn_proj_std, expected_proj_std, rel_tol=0.1)
