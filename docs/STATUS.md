@@ -4,7 +4,7 @@
 
 ## Current Phase
 
-**Phase 4 — IMPLEMENTATION** (Stages 1–5 Complete. Stage 6: Model Tests — IN PROGRESS)
+**Phase 4 — IMPLEMENTATION** (Stages 1–6 Complete. STOPPED — waiting for Owner review before Stage 7)
 
 ## Approval State
 
@@ -35,7 +35,7 @@
 | Phase 4 — Implementation Stage 3 (tokenizer) | ✅ COMPLETE |
 | Phase 4 — Implementation Stage 4 (data pipeline) | ✅ COMPLETE |
 | Phase 4 — Implementation Stage 5 (model) | ✅ COMPLETE |
-| Phase 4 — Implementation Stage 6 (model tests) | 🔄 IN PROGRESS |
+| Phase 4 — Implementation Stage 6 (model tests) | ✅ COMPLETE |
 | Phase 5 — Staged Validation | ⬜ NOT STARTED |
 | Phase 6 — Benchmark & Pre-commit | ⬜ NOT STARTED |
 | Phase 7 — Full Training | ⬜ NOT STARTED |
@@ -65,9 +65,11 @@
 
 - [x] Stage 5: Model & Parameter Counter (Transformer architecture, init, counter, 297M verified)
 
+- [x] Stage 6: Model Tests (shapes, causal masking, RoPE, overfit test)
+
 ## In-Progress Items
 
-- [ ] Stage 6: Model Tests (shapes, causal masking, RoPE, overfit test)
+- None. Stopped for Owner review before Stage 7 (Training infrastructure).
 
 ## Not Started Items
 
