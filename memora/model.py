@@ -31,6 +31,8 @@ class RotaryPositionalEmbedding(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply RoPE to x of shape (B, T, n_heads, head_dim)."""
         T = x.size(1)
+        orig_dtype = x.dtype
+        x_fp32 = x.float()
         cos_buf = cast(torch.Tensor, self.cos)
         sin_buf = cast(torch.Tensor, self.sin)
         # cos, sin shape: (T, dim // 2) -> (1, T, 1, dim // 2)
@@ -39,11 +41,11 @@ class RotaryPositionalEmbedding(nn.Module):
 
         # Split into real/imaginary parts
         d = self.dim // 2
-        x1, x2 = x[..., :d], x[..., d:]
+        x1, x2 = x_fp32[..., :d], x_fp32[..., d:]
 
         # Apply rotation
         rotated = torch.cat([x1 * cos - x2 * sin, x2 * cos + x1 * sin], dim=-1)
-        return rotated
+        return rotated.to(orig_dtype)
 
 
 class Attention(nn.Module):
@@ -118,7 +120,7 @@ class Block(nn.Module):
 
 
 class MemoraModel(nn.Module):
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: ModelConfig, seed: int = 0) -> None:
         super().__init__()
         self.config = config
 
@@ -136,6 +138,9 @@ class MemoraModel(nn.Module):
 
         if config.tie_embeddings:
             self.lm_head.weight = self.embedding.weight
+
+        if self.embedding.weight.device.type != "meta":
+            self.init_weights(seed)
 
     def forward(
         self, idx: torch.Tensor, targets: torch.Tensor | None = None
@@ -158,8 +163,8 @@ class MemoraModel(nn.Module):
         loss = None
         if targets is not None:
             # Compute CE loss over all logits and targets in fp32
-            logits_flat = logits.view(-1, logits.size(-1)).float()
-            targets_flat = targets.view(-1)
+            logits_flat = logits.reshape(-1, logits.size(-1)).float()
+            targets_flat = targets.reshape(-1)
             loss = F.cross_entropy(logits_flat, targets_flat)
 
         return logits, loss

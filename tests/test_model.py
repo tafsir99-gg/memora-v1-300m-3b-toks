@@ -35,6 +35,25 @@ def test_model_shapes(tiny_config: MemoraConfig):
     assert loss.item() >= 0
 
 
+def test_loss_non_contiguous(tiny_config: MemoraConfig):
+    model = MemoraModel(tiny_config.model)
+    B, T_plus_1 = 2, 17
+    batch = torch.randint(0, tiny_config.model.vocab_size, (B, T_plus_1))
+
+    # Non-contiguous slices
+    idx = batch[:, :-1]
+    targets = batch[:, 1:]
+    assert not targets.is_contiguous()
+
+    _, loss1 = model(idx, targets)
+
+    # Contiguous copies
+    _, loss2 = model(idx.contiguous(), targets.contiguous())
+
+    assert loss1 is not None and loss2 is not None
+    assert torch.allclose(loss1, loss2)
+
+
 def test_causal_masking(tiny_config: MemoraConfig):
     model = MemoraModel(tiny_config.model)
     model.eval()  # Disable dropout
@@ -43,20 +62,21 @@ def test_causal_masking(tiny_config: MemoraConfig):
     idx1 = torch.randint(0, tiny_config.model.vocab_size, (B, T))
     idx2 = idx1.clone()
 
-    # Change a token at position 4
-    idx2[0, 4] = (idx2[0, 4] + 1) % tiny_config.model.vocab_size
+    # Change the LAST token
+    idx2[0, -1] = (idx2[0, -1] + 1) % tiny_config.model.vocab_size
 
     with torch.no_grad():
         logits1, _ = model(idx1)
         logits2, _ = model(idx2)
 
-    # Positions 0..3 should be bit-identical
-    assert torch.equal(logits1[:, :4, :], logits2[:, :4, :])
-    # Positions 4..7 should differ
-    assert not torch.equal(logits1[:, 4:, :], logits2[:, 4:, :])
+    if idx1.device.type == "cuda":
+        assert torch.allclose(logits1[:, :-1, :], logits2[:, :-1, :], atol=1e-6)
+    else:
+        assert torch.equal(logits1[:, :-1, :], logits2[:, :-1, :])
+    assert not torch.equal(logits1[:, -1:, :], logits2[:, -1:, :])
 
 
-def test_rope_properties():
+def test_rope_properties(tiny_config: MemoraConfig):
     dim = 16
     max_seq_len = 32
     rope = RotaryPositionalEmbedding(dim, max_seq_len)
@@ -74,18 +94,29 @@ def test_rope_properties():
     x_rot = rope(x)
     assert torch.allclose(torch.norm(x, dim=-1), torch.norm(x_rot, dim=-1), atol=1e-5)
 
-    # 4. q.k dot product depends only on relative offset
-    # Create fixed vectors for q and k at all positions
-    q = torch.ones(1, max_seq_len, 1, dim)
-    k = torch.ones(1, max_seq_len, 1, dim)
+    # 4. Naive reference comparison
+    x_ref = torch.randn(1, max_seq_len, 1, dim)
+    x_rot_ref = rope(x_ref)
+    for pos in [0, 1, 7, 31]:
+        for i in range(dim // 2):
+            angle = pos * (10000.0 ** (-2.0 * i / dim))
+            cos_a = math.cos(angle)
+            sin_a = math.sin(angle)
+            orig_1 = x_ref[0, pos, 0, i].item()
+            orig_2 = x_ref[0, pos, 0, i + dim // 2].item()
+            expected_1 = orig_1 * cos_a - orig_2 * sin_a
+            expected_2 = orig_2 * cos_a + orig_1 * sin_a
+            assert math.isclose(x_rot_ref[0, pos, 0, i].item(), expected_1, abs_tol=1e-5)
+            assert math.isclose(x_rot_ref[0, pos, 0, i + dim // 2].item(), expected_2, abs_tol=1e-5)
 
-    q_rot = rope(q)
-    k_rot = rope(k)
-
-    # Dot product of position 2 and 5 should equal 4 and 7
-    dp1 = (q_rot[0, 5] * k_rot[0, 2]).sum().item()
-    dp2 = (q_rot[0, 7] * k_rot[0, 4]).sum().item()
-    assert math.isclose(dp1, dp2, rel_tol=1e-5)
+    # 5. Spy test proving Attention calls rope exactly once on q and k
+    import unittest.mock
+    model = MemoraModel(tiny_config.model)
+    with unittest.mock.patch.object(model.rope, 'forward', wraps=model.rope.forward) as mock_rope:
+        idx = torch.randint(0, tiny_config.model.vocab_size, (1, 8))
+        model(idx)
+        # called twice per layer (once for q, once for k)
+        assert mock_rope.call_count == 2 * tiny_config.model.n_layers
 
 
 def test_tied_embeddings(tiny_config: MemoraConfig):
@@ -129,8 +160,7 @@ def test_parameter_count(tiny_config: MemoraConfig, config_300m: MemoraConfig):
 
 
 def test_initialization_stats(tiny_config: MemoraConfig):
-    model = MemoraModel(tiny_config.model)
-    model.init_weights(seed=42)
+    model = MemoraModel(tiny_config.model, seed=42)
 
     # Weight std close to init_std
     embedding_std = model.embedding.weight.std().item()
@@ -145,7 +175,14 @@ def test_initialization_stats(tiny_config: MemoraConfig):
     from memora.model import Block
     block = typing.cast(Block, model.layers[0])
     attn_proj_std = block.attn.proj.weight.std().item()
+    mlp_fc2_std = block.mlp.fc2.weight.std().item()
     assert math.isclose(attn_proj_std, expected_proj_std, rel_tol=0.1)
+    assert math.isclose(mlp_fc2_std, expected_proj_std, rel_tol=0.1)
+
+    attn_qkv_std = block.attn.qkv.weight.std().item()
+    mlp_fc1_std = block.mlp.fc1.weight.std().item()
+    assert math.isclose(attn_qkv_std, tiny_config.model.init_std, rel_tol=0.1)
+    assert math.isclose(mlp_fc1_std, tiny_config.model.init_std, rel_tol=0.1)
 
     # Initial loss is close to -ln(1/vocab) = ln(vocab)
     model.eval()
@@ -159,8 +196,7 @@ def test_initialization_stats(tiny_config: MemoraConfig):
 
 
 def test_forward_backward_gradients(tiny_config: MemoraConfig):
-    model = MemoraModel(tiny_config.model)
-    model.init_weights(seed=42)
+    model = MemoraModel(tiny_config.model, seed=42)
 
     idx = torch.randint(0, tiny_config.model.vocab_size, (1, 16))
     targets = torch.randint(0, tiny_config.model.vocab_size, (1, 16))
@@ -175,13 +211,9 @@ def test_forward_backward_gradients(tiny_config: MemoraConfig):
 
 
 def test_determinism(tiny_config: MemoraConfig):
-    m1 = MemoraModel(tiny_config.model)
-    m2 = MemoraModel(tiny_config.model)
-    m3 = MemoraModel(tiny_config.model)
-
-    m1.init_weights(seed=123)
-    m2.init_weights(seed=123)
-    m3.init_weights(seed=456)
+    m1 = MemoraModel(tiny_config.model, seed=123)
+    m2 = MemoraModel(tiny_config.model, seed=123)
+    m3 = MemoraModel(tiny_config.model, seed=456)
 
     # 1. Init determinism
     assert torch.equal(m1.embedding.weight, m2.embedding.weight)
@@ -200,31 +232,40 @@ def test_determinism(tiny_config: MemoraConfig):
 
 
 def test_weight_decay_groups(tiny_config: MemoraConfig):
-    model = MemoraModel(tiny_config.model)
-    groups = model.weight_decay_groups(weight_decay=0.1)
+    model1 = MemoraModel(tiny_config.model, seed=1)
+    model2 = MemoraModel(tiny_config.model, seed=2)
 
-    assert len(groups) == 2
-    decay_params = groups[0]["params"]
-    no_decay_params = groups[1]["params"]
+    groups1 = model1.weight_decay_groups(weight_decay=0.1)
+    groups2 = model2.weight_decay_groups(weight_decay=0.1)
+
+    assert len(groups1) == 2
+    assert len(groups1) == len(groups2)
+
+    for g1, g2 in zip(groups1, groups2, strict=False):
+        assert len(g1["params"]) == len(g2["params"])
+        for p1, p2 in zip(g1["params"], g2["params"], strict=False):
+            assert p1.shape == p2.shape
+
+    decay_params = groups1[0]["params"]
+    no_decay_params = groups1[1]["params"]
 
     all_params_in_groups = {id(p) for p in decay_params + no_decay_params}
-    all_model_params = {id(p) for p in model.parameters()}
+    all_model_params = {id(p) for p in model1.parameters()}
 
     # Every parameter is in exactly one group
     assert all_params_in_groups == all_model_params
 
     # Embedding is in no-decay
-    assert id(model.embedding.weight) in {id(p) for p in no_decay_params}
+    assert id(model1.embedding.weight) in {id(p) for p in no_decay_params}
 
     # Norms are in no-decay
-    assert id(model.ln_f.weight) in {id(p) for p in no_decay_params}
+    assert id(model1.ln_f.weight) in {id(p) for p in no_decay_params}
 
 
 def test_tiny_overfit(tiny_config: MemoraConfig):
     """The tiny model memorizes a fixed small batch (loss falls below 0.1)."""
     torch.manual_seed(42)
-    model = MemoraModel(tiny_config.model)
-    model.init_weights(seed=42)
+    model = MemoraModel(tiny_config.model, seed=42)
 
     # Single batch
     idx = torch.randint(0, tiny_config.model.vocab_size, (2, 32))
@@ -253,12 +294,26 @@ def test_cuda_fp16_autocast(tiny_config: MemoraConfig):
     if not torch.cuda.is_available():
         pytest.skip("CUDA not available")
 
-    model = MemoraModel(tiny_config.model).cuda()
+    model = MemoraModel(tiny_config.model, seed=42).cuda()
     idx = torch.randint(0, tiny_config.model.vocab_size, (1, 16)).cuda()
     targets = torch.randint(0, tiny_config.model.vocab_size, (1, 16)).cuda()
+
+    scaler = torch.amp.GradScaler('cuda')
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
 
     with torch.amp.autocast('cuda', dtype=torch.float16):
         logits, loss = model(idx, targets)
 
     assert logits.dtype == torch.float16
-    assert loss.dtype == torch.float32  # loss upcasted in model
+    assert loss is not None and loss.dtype == torch.float32  # loss upcasted in model
+
+    assert torch.isfinite(loss)
+    assert torch.isfinite(logits).all()
+
+    scaler.scale(loss).backward()
+    scaler.step(optimizer)
+    scaler.update()
+
+    for p in model.parameters():
+        if p.grad is not None:
+            assert torch.isfinite(p.grad).all()
