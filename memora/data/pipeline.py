@@ -19,7 +19,7 @@ import hashlib
 import json
 import pathlib
 import struct
-from typing import Iterator
+from collections.abc import Iterator
 
 import numpy as np
 
@@ -33,25 +33,25 @@ _SPLIT_HASH_BYTES = 4  # 32-bit hash gives uniform distribution with no collisio
 
 
 def document_split(
-    doc_id: str,
+    text: str,
     val_ratio: float,
     seed: int = 42,
 ) -> str:
-    """Assign a document to 'train' or 'val' deterministically by hashing its ID.
+    """Assign a document to 'train' or 'val' deterministically by hashing its text.
 
     The split is:
-      - order-independent: result depends only on doc_id, not processing order
+      - order-independent: result depends only on text, not processing order
       - reproducible: same inputs always give same output
       - disjoint: a doc is in exactly one split
 
     Parameters
     ----------
-    doc_id:
-        A unique string identifier for the document (e.g., URL or line index as string).
+    text:
+        The raw document text.
     val_ratio:
         Fraction of documents assigned to val (e.g., 0.005 for 0.5%).
     seed:
-        Mixed into the hash to allow different splits without changing doc IDs.
+        Mixed into the hash to allow different splits.
 
     Returns
     -------
@@ -60,7 +60,8 @@ def document_split(
     if not 0.0 < val_ratio < 1.0:
         raise ValueError(f"val_ratio must be in (0, 1), got {val_ratio}")
     # Mix seed into the key so different seeds give different splits.
-    key = f"{seed}:{doc_id}".encode("utf-8")
+    h = document_hash(text)
+    key = f"{seed}:{h}".encode()
     digest = hashlib.sha256(key).digest()[:_SPLIT_HASH_BYTES]
     # Interpret as big-endian unsigned int, normalise to [0, 1).
     value = int.from_bytes(digest, "big") / (2 ** (8 * _SPLIT_HASH_BYTES))
@@ -268,10 +269,10 @@ class ShardedTokenLoader:
         'train' or 'val'.
     seq_len:
         Sequence length (tokens per sample).
-    start_shard:
-        Resume from this shard index (0-indexed).
-    start_offset:
-        Resume from this token offset within ``start_shard``.
+    rank:
+        Process rank for distributed loading.
+    world_size:
+        Total number of processes for distributed loading.
     """
 
     def __init__(
@@ -279,17 +280,25 @@ class ShardedTokenLoader:
         shard_dir: pathlib.Path,
         split: str,
         seq_len: int,
-        start_shard: int = 0,
-        start_offset: int = 0,
+        rank: int = 0,
+        world_size: int = 1,
     ) -> None:
         self.shard_dir = shard_dir
         self.split = split
         self.seq_len = seq_len
-        self._shard_paths = sorted(shard_dir.glob(f"{split}_*.bin"))
-        if not self._shard_paths:
+        self.rank = rank
+        self.world_size = world_size
+
+        all_paths = sorted(shard_dir.glob(f"{split}_*.bin"))
+        if not all_paths:
             raise FileNotFoundError(f"No shard files found for split '{split}' in {shard_dir}")
-        self._shard_idx = start_shard
-        self._offset = start_offset
+
+        self._shard_paths = all_paths[rank::world_size]
+        if not self._shard_paths:
+            raise ValueError(f"Not enough shards ({len(all_paths)}) for world_size {world_size}")
+
+        self._shard_idx = 0
+        self._offset = 0
         self._current: np.ndarray | None = None
         self._load_shard(self._shard_idx)
 
@@ -298,10 +307,15 @@ class ShardedTokenLoader:
         self._shard_idx = idx
         # mmap: in production we'd use np.memmap; for correctness we use _read_shard here.
 
-    @property
-    def position(self) -> tuple[int, int]:
-        """Return (shard_index, token_offset) — save this to resume."""
-        return (self._shard_idx, self._offset)
+    def state_dict(self) -> dict:
+        """Return state dict to resume."""
+        return {"shard_idx": self._shard_idx, "offset": self._offset}
+
+    def load_state_dict(self, state: dict) -> None:
+        """Restore position from state dict."""
+        self._shard_idx = state["shard_idx"]
+        self._offset = state["offset"]
+        self._load_shard(self._shard_idx)
 
     def __iter__(self) -> Iterator[np.ndarray]:
         """Yield non-overlapping seq_len windows of token IDs as uint16 arrays."""

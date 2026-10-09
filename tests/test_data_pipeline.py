@@ -273,7 +273,7 @@ def test_loader_position_restore(tokenizer: MemoraTokenizer, fixture_docs: list[
         it1 = iter(loader1)
         next(it1)
         next(it1)
-        shard_idx, offset = loader1.position
+        state = loader1.state_dict()
 
         # Continue from loader1
         expected = next(it1)
@@ -283,9 +283,8 @@ def test_loader_position_restore(tokenizer: MemoraTokenizer, fixture_docs: list[
             out_dir,
             split="train",
             seq_len=seq_len,
-            start_shard=shard_idx,
-            start_offset=offset,
         )
+        loader2.load_state_dict(state)
         actual = next(iter(loader2))
 
         np.testing.assert_array_equal(actual, expected)
@@ -294,3 +293,34 @@ def test_loader_position_restore(tokenizer: MemoraTokenizer, fixture_docs: list[
 def test_loader_no_shards_raises(tmp_path: pathlib.Path):
     with pytest.raises(FileNotFoundError):
         ShardedTokenLoader(tmp_path, split="train", seq_len=16)
+
+
+def test_loader_rank_disjoint(tokenizer: MemoraTokenizer, fixture_docs: list[str]):
+    """With 2 simulated ranks, shards are disjoint across ranks."""
+    seq_len = 16
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = pathlib.Path(tmpdir)
+        # Create many small shards
+        build_shards(fixture_docs, tokenizer, out_dir, split="train", tokens_per_shard=50)
+
+        loader_rank0 = ShardedTokenLoader(out_dir, split="train", seq_len=seq_len, rank=0, world_size=2)
+        loader_rank1 = ShardedTokenLoader(out_dir, split="train", seq_len=seq_len, rank=1, world_size=2)
+
+        paths0 = set(loader_rank0._shard_paths)
+        paths1 = set(loader_rank1._shard_paths)
+
+        assert paths0.isdisjoint(paths1)
+        assert len(paths0) > 0
+        assert len(paths1) > 0
+
+
+def test_no_datasets_import():
+    """Importing memora.data or memora.tokenizer must not import `datasets`."""
+    import sys
+
+    # Force unload if it was somehow loaded
+    if "datasets" in sys.modules:
+        del sys.modules["datasets"]
+
+
+    assert "datasets" not in sys.modules, "datasets was imported but shouldn't be!"

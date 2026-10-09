@@ -11,7 +11,7 @@ On Mac, only the tiny fixture corpus is used (for test purposes).
 import hashlib
 import json
 import pathlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from tokenizers import Tokenizer
 from tokenizers.decoders import ByteLevel as ByteLevelDecoder
@@ -30,12 +30,15 @@ EOS_ID = 1
 UNK_ID = 2
 
 
-def _text_iterator(corpus_path: str | pathlib.Path) -> Iterator[str]:
+def _text_iterator(
+    corpus_path: str | pathlib.Path,
+    doc_filter: Callable[[str], bool] | None = None,
+) -> Iterator[str]:
     """Yield non-empty lines from a plain-text file (one document per line)."""
     with open(corpus_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if line:
+            if line and (doc_filter is None or doc_filter(line)):
                 yield line
 
 
@@ -43,6 +46,7 @@ def train(
     corpus_path: str | pathlib.Path,
     output_dir: str | pathlib.Path,
     vocab_size: int = 32768,
+    doc_filter: Callable[[str], bool] | None = None,
 ) -> pathlib.Path:
     """Train a byte-level BPE tokenizer on the given corpus.
 
@@ -54,6 +58,8 @@ def train(
         Directory where ``tokenizer.json`` and ``tokenizer_config.json`` are saved.
     vocab_size:
         Target vocabulary size. The real model uses 32,768; tests use 512.
+    doc_filter:
+        Optional callable to filter documents (e.g., to exclude validation set).
 
     Returns
     -------
@@ -74,7 +80,7 @@ def train(
     )
 
     tokenizer.train_from_iterator(
-        _text_iterator(corpus_path),
+        _text_iterator(corpus_path, doc_filter=doc_filter),
         trainer=trainer,
     )
 

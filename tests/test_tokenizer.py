@@ -150,3 +150,24 @@ def test_sha256_helper(trained_tokenizer_dir: pathlib.Path):
     tok_path = trained_tokenizer_dir / "tokenizer.json"
     expected = hashlib.sha256(tok_path.read_bytes()).hexdigest()
     assert tokenizer_sha256(tok_path) == expected
+
+
+def test_doc_filter_excludes_validation_documents():
+    """Tokenizer training uses doc_filter to exclude val set."""
+    with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
+        # 1. Train without filter
+        path1 = train(FIXTURE_CORPUS, d1, vocab_size=FIXTURE_VOCAB_SIZE)
+
+        # 2. Train with filter that excludes everything
+        # If it excludes everything, BpeTrainer might raise an error or create an empty vocab.
+        # But we just want to ensure doc_filter is actually called and changes the output.
+        # Let's filter out exactly half the lines.
+        path2 = train(
+            FIXTURE_CORPUS,
+            d2,
+            vocab_size=FIXTURE_VOCAB_SIZE,
+            doc_filter=lambda x: hash(x) % 2 == 0
+        )
+        h1 = tokenizer_sha256(path1)
+        h2 = tokenizer_sha256(path2)
+        assert h1 != h2, "Tokenizer training did not respect doc_filter"
