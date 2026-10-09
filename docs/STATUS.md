@@ -4,7 +4,7 @@
 
 ## Current Phase
 
-**Phase 4 — IMPLEMENTATION** (Stages 1–4 Complete. STOPPED — waiting for Owner review before Stage 5: Model)
+**Phase 4 — IMPLEMENTATION** (Stages 1–5 Complete. Stage 6: Model Tests — IN PROGRESS)
 
 ## Approval State
 
@@ -34,7 +34,8 @@
 | Phase 4 — Implementation Stage 2 (config system) | ✅ COMPLETE |
 | Phase 4 — Implementation Stage 3 (tokenizer) | ✅ COMPLETE |
 | Phase 4 — Implementation Stage 4 (data pipeline) | ✅ COMPLETE |
-| Phase 4 — Implementation Stage 5 (model) | ⬜ NOT STARTED (STOPPED for Owner review) |
+| Phase 4 — Implementation Stage 5 (model) | ✅ COMPLETE |
+| Phase 4 — Implementation Stage 6 (model tests) | 🔄 IN PROGRESS |
 | Phase 5 — Staged Validation | ⬜ NOT STARTED |
 | Phase 6 — Benchmark & Pre-commit | ⬜ NOT STARTED |
 | Phase 7 — Full Training | ⬜ NOT STARTED |
@@ -62,13 +63,15 @@
 - [x] Stage 3: Tokenizer (BPE trainer, wrapper, 14 tests: round-trip, special IDs, determinism, sha256)
 - [x] Stage 4: Data Pipeline (hash split, dedup, char-filter, uint16 shards+manifest, resumable loader; 23 tests)
 
+- [x] Stage 5: Model & Parameter Counter (Transformer architecture, init, counter, 297M verified)
+
 ## In-Progress Items
 
-- None. Stopped for Owner review before Stage 5 (model architecture).
+- [ ] Stage 6: Model Tests (shapes, causal masking, RoPE, overfit test)
 
 ## Not Started Items
 
-- [ ] Stage 5+: Model, trainer, eval, inference (WAITING for Owner review)
+- [ ] Stage 7+: Training infrastructure (WAITING for Owner review)
 - [ ] All training (blocked on implementation)
 - [ ] All evaluation (blocked on training)
 

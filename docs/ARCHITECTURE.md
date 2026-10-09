@@ -387,6 +387,8 @@ CUDA overhead:                 ~0.5-1 GB
 ESTIMATED TOTAL:               ~7-13 GB  (within 16 GB T4 VRAM)
 ```
 
+**Note (Phase 6 Memory Candidate):** When computing loss, fp32 logits for a micro-batch of 16 x 1024 x 32768 take about ~2 GB of memory (`16 * 1024 * 32768 * 4` bytes). This is a significant chunk of memory and will be measured in Phase 6.
+
 Micro batch size of 16 × 1024 seq_len is the starting candidate. Must be verified by memory benchmark (Phase 6). Gradient accumulation bridges the gap to the target global batch size.
 
 ### 6.3 Mixed Precision
