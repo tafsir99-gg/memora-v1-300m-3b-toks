@@ -115,11 +115,17 @@ def test_parameter_count(tiny_config: MemoraConfig, config_300m: MemoraConfig):
 
     assert actual_tiny == analytic_tiny
 
-    # Test 2: 300m matches exactly 296,972,160 on meta device
+    # Test 2: 300m matches exactly 296,972,160 on meta device (tied) and 328,429,440 (untied)
     with torch.device("meta"):
-        model_300m = MemoraModel(config_300m.model)
-    actual_300m = sum(p.numel() for p in model_300m.parameters())
-    assert actual_300m == 296972160
+        cfg_tied = config_300m.model.model_copy(update={"tie_embeddings": True})
+        model_300m_tied = MemoraModel(cfg_tied)
+        actual_300m_tied = sum(p.numel() for p in model_300m_tied.parameters())
+        assert actual_300m_tied == 296972160
+
+        cfg_untied = config_300m.model.model_copy(update={"tie_embeddings": False})
+        model_300m_untied = MemoraModel(cfg_untied)
+        actual_300m_untied = sum(p.numel() for p in model_300m_untied.parameters())
+        assert actual_300m_untied == 328429440
 
 
 def test_initialization_stats(tiny_config: MemoraConfig):

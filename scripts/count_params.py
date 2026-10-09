@@ -99,8 +99,15 @@ def count_params(config: MemoraConfig) -> None:
     print(f"TOTAL:             {actual_total:,}")
     print(f"Analytic total:    {analytic_total:,}")
 
-    untied_total = sum(p.numel() for name, p in model.named_parameters())
-    print(f"(Tied vs Untied):  {actual_total:,} tied, {untied_total:,} untied")
+    # Compute tied vs untied using meta device models
+    with torch.device("meta"):
+        model_tied = MemoraModel(m_cfg.model_copy(update={"tie_embeddings": True}))
+        tied_meta = sum(p.numel() for p in model_tied.parameters())
+
+        model_untied = MemoraModel(m_cfg.model_copy(update={"tie_embeddings": False}))
+        untied_meta = sum(p.numel() for p in model_untied.parameters())
+
+    print(f"(Tied vs Untied):  {tied_meta:,} tied, {untied_meta:,} untied")
 
     if actual_total != analytic_total:
         print(f"ERROR: Model parameter count {actual_total} != analytic count {analytic_total}", file=sys.stderr)
