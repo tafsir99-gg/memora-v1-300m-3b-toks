@@ -474,6 +474,7 @@ Full schema with every field, type, default, range, and justification:
 | warmup_tokens | int | 131,072,000 | ≥0 | ~131M tokens ≈ 250 steps at 524K batch. Token-based; schedule-agnostic. |
 | lr_schedule | str | "cosine" | {"cosine", "wsd"} | Default cosine until Phase 6 determines committed horizon |
 | wsd_decay_tokens | int | 100,000,000 | >0 | Only active when lr_schedule="wsd"; length of final decay window |
+| wsd_decay_start_tokens | int\|None | null | ≥warmup_tokens, ≤max_tokens−wsd_decay_tokens | Token count where WSD decay begins. null = max_tokens−wsd_decay_tokens. Validated on load. |
 | max_tokens | int | 3,000,000,000 | >0 | Project target; ~10 tokens/param |
 | weight_decay | float | 0.1 | ≥0 | Standard for transformers; excludes norms/biases |
 | beta1 | float | 0.9 | (0, 1) | Standard Adam β1 |
@@ -499,11 +500,11 @@ contradicts R6. Wall-clock intervals are used instead.
 | dir | str | "checkpoints/" | valid path | Checkpoint output directory |
 | save_full_interval_minutes | int | 30 | ≥1 | Full checkpoint every 30 min (ESTIMATE: ~19–37 steps at 1×T4) |
 | save_lightweight_interval_minutes | int | 10 | ≥1 | Weights-only snapshot every 10 min |
-| hf_upload_interval_minutes | int | 60 | ≥1 | Upload to HF Hub every 60 min |
+| hf_upload_interval_minutes | int | 120 | ≥1 | Upload to HF Hub every 120 min; each upload writes ~3.6 GB LFS history. squash_history (HfApi.super_squash_history) must run after each session's final upload. |
 | keep_full_n | int | 2 | ≥1 | Resumable checkpoints retained on disk |
 | keep_lightweight_n | int | 3 | ≥1 | Lightweight snapshots retained on disk |
 | keep_best | bool | true | — | Always retain best-val-loss checkpoint regardless of age |
-| save_optimizer | bool | true | — | Include optimizer + scaler + RNG state for exact resume |
+| *(save_optimizer removed)* | — | — | — | Full checkpoints ALWAYS include optimizer + scaler + RNG state. A checkpoint without these cannot be resumed. |
 
 ### session.*
 
@@ -527,14 +528,29 @@ contradicts R6. Wall-clock intervals are used instead.
 
 | Field | Type | Default | Range | Justification |
 |-------|------|---------|-------|---------------|
-| val_interval_minutes | int | 30 | ≥1 | Run val every 30 min, aligned with full checkpoint interval (ESTIMATE) |
-| val_tokens | int | 10,000,000 | ≥1 | ~10M tokens per val; ~1 minute compute |
+| val_interval_minutes | int | 60 | ≥1 | Run val every 60 min. Arithmetic (ESTIMATE, 1xT4, 15–30% MFU): 2M tokens at 5,500–11,000 tok/s ≈ 3–6 min = ~5–10% GPU time per 60-min interval. Full-set validation for milestone checkpoints only. |
+| val_tokens | int | 2,000,000 | ≥1 | 2M tokens per val ≈ 3–6 min on 1xT4 (ESTIMATE) |
 | sample_interval_minutes | int | 60 | ≥1 | Text samples for qualitative tracking every 60 min |
 | sample_prompts | list[str] | (3 fixed) | ≥1 item | Fixed prompts for reproducible comparison |
 | sample_temperature | float | 0.8 | >0 | Standard generation temperature |
 | sample_top_k | int | 50 | ≥1 | Standard top-k |
 | sample_top_p | float | 1.0 | (0, 1] | Nucleus sampling p; 1.0 = disabled |
 | sample_max_tokens | int | 128 | ≥1 | Short samples for logging |
+
+### logging.*
+
+| Field | Type | Default | Range | Justification |
+|-------|------|---------|-------|---------------|
+| log_interval_steps | int | 1 | ≥1 | Log every step. At ~48–95s/step on 1xT4, 10 steps = 8–16 min blind spot; default=1. |
+| log_dir | str | "runs/" | valid path | JSONL log output directory |
+| format | str | "jsonl" | {"jsonl"} | Structured log format |
+
+### distributed.*
+
+| Field | Type | Default | Range | Justification |
+|-------|------|---------|-------|---------------|
+| backend | str | "nccl" | {"nccl", "gloo"} | nccl for GPU; gloo for CPU fallback |
+| strategy | str | "ddp" | {"ddp"} | DistributedDataParallel |
 
 ## 4. Training Flow Diagram
 

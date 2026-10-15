@@ -116,21 +116,30 @@ def assign_split(document_text: str, val_ratio: float = 0.005) -> str:
 
 #### Stage 6: Tokenize
 - Use trained MemoraTokenizer
-- Prepend `<|bos|>`, append `<|eos|>` to each document
-- Concatenate tokenized documents into a stream
-- No padding between documents (packed format)
+- Append `<|eos|>` to each document (EOS-only, GPT-2 style — **no BOS prepended**)
+- Concatenate tokenized documents into a stream; no padding between documents (packed format)
+- **Decision (explicit):** EOS-only separator (one token per document boundary). BOS is defined
+  in the tokenizer vocabulary but intentionally not prepended during sharding. Packed sequences
+  have no cross-document attention masking — this is accepted at this model scale.
+  Changing to BOS+EOS would increase token count by ~9.7M tokens (~0.3% of 3B) and require
+  retraining from scratch; do not change without a plan amendment.
 
 #### Stage 7: Shard
 - Write tokenized stream into fixed-size binary shards
 - Format: flat array of `uint16` token IDs (2 bytes each, supports vocab up to 65535)
-- Shard size: ~100 MB each (~50M tokens per shard)
-- 3B tokens → ~60 shards total
+- Shard size: ~20 MB each (**10M tokens per shard** — implemented value; see note)
+- 3B tokens → **~300–350 shards total** (train + val combined)
 
-**Shard file layout:**
+> **Note (2026-10-15):** The plan originally specified ~50M tokens/shard (~60 shards). The
+> implemented value is 10M tokens/shard (`SHARD_TOKENS_PER_FILE = 10_000_000` in pipeline.py),
+> giving ~300–350 shards. Smaller shards enable finer-grained distributed loading and faster
+> startup. This is the authoritative implemented value; the 50M/60-shard figures are superseded.
+
+**Shard file layout (magic + uint32 count header + uint16 token IDs):**
 ```
-shard_0000.bin: [token_0, token_1, ..., token_49999999]  # uint16, little-endian
-shard_0001.bin: [token_50000000, ...]
-...
+train_0000.bin: [MEMS magic (4B)] [n_tokens (4B)] [token_0 ... token_9999999]  # uint16, LE
+train_0001.bin: [MEMS magic (4B)] [n_tokens (4B)] [token_10000000, ...]
+...  # ~300-350 train + val shards total
 ```
 
 Documents span shard boundaries (no padding at shard boundaries). This is fine because the DataLoader reads contiguous windows of `seq_len + 1` tokens.
