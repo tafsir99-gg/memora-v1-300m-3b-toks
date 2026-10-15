@@ -36,11 +36,10 @@ checkpoint:
   dir: "checkpoints/"
   save_full_interval_minutes: 30
   save_lightweight_interval_minutes: 10
-  hf_upload_interval_minutes: 60
+  hf_upload_interval_minutes: 120
   keep_full_n: 2
   keep_lightweight_n: 3
   keep_best: true
-  save_optimizer: true
 
 session:
   max_wall_clock_minutes: 690
@@ -55,8 +54,8 @@ data:
   seed: 42
 
 evaluation:
-  val_interval_minutes: 30
-  val_tokens: 10000000
+  val_interval_minutes: 60
+  val_tokens: 2000000
   sample_interval_minutes: 60
   sample_prompts:
     - "The meaning of life is"
@@ -68,7 +67,7 @@ evaluation:
   sample_max_tokens: 128
 
 logging:
-  log_interval_steps: 10
+  log_interval_steps: 1
   log_dir: "runs/"
   format: "jsonl"
 

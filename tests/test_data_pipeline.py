@@ -324,3 +324,94 @@ def test_no_datasets_import():
 
 
     assert "datasets" not in sys.modules, "datasets was imported but shouldn't be!"
+
+
+# ---------------------------------------------------------------------------
+# P2 loader state_dict self-describing and validation
+# ---------------------------------------------------------------------------
+
+
+def test_loader_state_dict_is_self_describing(tokenizer: MemoraTokenizer, fixture_docs: list[str]):
+    """state_dict contains split, seq_len, rank, world_size, num_shards, shard_list_hash."""
+    seq_len = 16
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = pathlib.Path(tmpdir)
+        build_shards(fixture_docs, tokenizer, out_dir, split="train", tokens_per_shard=500)
+        loader = ShardedTokenLoader(out_dir, split="train", seq_len=seq_len)
+        it = iter(loader)
+        next(it)
+        state = loader.state_dict()
+        for key in ("split", "seq_len", "rank", "world_size", "num_shards", "shard_list_hash",
+                     "shard_idx", "offset"):
+            assert key in state, f"Missing key {key!r} in state_dict"
+        # All values must be plain int or str (JSON serialisable)
+        import json
+        json.dumps(state)  # must not raise
+
+
+def test_loader_state_dict_wrong_seq_len_raises(tokenizer: MemoraTokenizer, fixture_docs: list[str]):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = pathlib.Path(tmpdir)
+        build_shards(fixture_docs, tokenizer, out_dir, split="train", tokens_per_shard=500)
+        loader_a = ShardedTokenLoader(out_dir, split="train", seq_len=16)
+        state = loader_a.state_dict()
+        loader_b = ShardedTokenLoader(out_dir, split="train", seq_len=32)
+        with pytest.raises(ValueError, match="seq_len"):
+            loader_b.load_state_dict(state)
+
+
+def test_loader_state_dict_wrong_world_size_raises(tokenizer: MemoraTokenizer, fixture_docs: list[str]):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = pathlib.Path(tmpdir)
+        build_shards(fixture_docs, tokenizer, out_dir, split="train", tokens_per_shard=50)
+        loader_a = ShardedTokenLoader(out_dir, split="train", seq_len=16, rank=0, world_size=1)
+        state = loader_a.state_dict()
+        loader_b = ShardedTokenLoader(out_dir, split="train", seq_len=16, rank=0, world_size=2)
+        with pytest.raises(ValueError, match="world_size"):
+            loader_b.load_state_dict(state)
+
+
+def test_loader_state_dict_wrong_rank_raises(tokenizer: MemoraTokenizer, fixture_docs: list[str]):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = pathlib.Path(tmpdir)
+        build_shards(fixture_docs, tokenizer, out_dir, split="train", tokens_per_shard=50)
+        loader_a = ShardedTokenLoader(out_dir, split="train", seq_len=16, rank=0, world_size=2)
+        state = loader_a.state_dict()
+        loader_b = ShardedTokenLoader(out_dir, split="train", seq_len=16, rank=1, world_size=2)
+        with pytest.raises(ValueError, match="rank"):
+            loader_b.load_state_dict(state)
+
+
+def test_loader_state_dict_different_shards_raises(tokenizer: MemoraTokenizer, fixture_docs: list[str]):
+    """Restoring from a state saved against a different shard set raises."""
+    seq_len = 16
+    with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
+        out1 = pathlib.Path(d1)
+        out2 = pathlib.Path(d2)
+        build_shards(fixture_docs, tokenizer, out1, split="train", tokens_per_shard=500)
+        build_shards(fixture_docs[:2], tokenizer, out2, split="train", tokens_per_shard=500)
+        loader1 = ShardedTokenLoader(out1, split="train", seq_len=seq_len)
+        state = loader1.state_dict()
+        loader2 = ShardedTokenLoader(out2, split="train", seq_len=seq_len)
+        with pytest.raises(ValueError, match="shard_list_hash|num_shards"):
+            loader2.load_state_dict(state)
+
+
+def test_loader_window_overlap(tokenizer: MemoraTokenizer, fixture_docs: list[str]):
+    """Consecutive windows share exactly one token: window[i][-1] == window[i+1][0]."""
+    seq_len = 16
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = pathlib.Path(tmpdir)
+        build_shards(fixture_docs, tokenizer, out_dir, split="train", tokens_per_shard=5000)
+        loader = ShardedTokenLoader(out_dir, split="train", seq_len=seq_len)
+        windows = []
+        for w in loader:
+            windows.append(w.copy())
+            if len(windows) >= 5:
+                break
+        assert len(windows) >= 2
+        for i in range(len(windows) - 1):
+            assert windows[i][-1] == windows[i + 1][0], (
+                f"Window {i} last token {windows[i][-1]} != window {i+1} first token {windows[i+1][0]}"
+            )
+

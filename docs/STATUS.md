@@ -4,7 +4,7 @@
 
 ## Current Phase
 
-**Phase 4 — IMPLEMENTATION** (Stages 1–6 Complete. STOPPED — waiting for Owner review before Stage 7)
+**Phase 4 — IMPLEMENTATION** (Stages 1–6 Complete, P1-P4 fixes applied. Stage 7a/8a IN PROGRESS)
 
 ## Approval State
 
@@ -66,16 +66,38 @@
 - [x] Stage 5: Model & Parameter Counter (Transformer architecture, init, counter, 297M verified)
 
 - [x] Stage 6: Model Tests (shapes, causal masking, RoPE, overfit test)
+- [x] P1-P4 fixes: config defaults, wsd_decay_start_tokens, with_overrides, check_resume_compat, loader state_dict, docs
+
+## UNVERIFIED Items (require Kaggle GPU)
+
+- **test_cuda_fp16_autocast** (`tests/test_model.py`): Tests RoPE dtype fix (fp32 compute, return x.dtype),
+  forward+backward under torch.amp.autocast fp16, GradScaler step, finite logits/loss/grads.
+  Skipped locally (no CUDA). Must pass on first Kaggle GPU session before Stage 7b training loop.
 
 ## In-Progress Items
 
-- None. Stopped for Owner review before Stage 7 (Training infrastructure).
+- Stage 7a: scheduler, optimizer, logger — IN PROGRESS
+- Stage 8a: checkpoint system — IN PROGRESS
 
 ## Not Started Items
 
-- [ ] Stage 7+: Training infrastructure (WAITING for Owner review)
+- [ ] Stage 7b: Training loop (blocked on 7a/8a review)
 - [ ] All training (blocked on implementation)
 - [ ] All evaluation (blocked on training)
+
+## DATA_PLAN TODOs (deferred — not implemented now)
+
+- **build_shards streaming**: Current implementation buffers all tokens in memory (O(n)); must
+  use a generator before real Kaggle data build.
+- **Batch encoding**: build_shards encodes documents one at a time; use batch encode for speed.
+- **Single-pass train+val shards**: Current pipeline builds one split at a time; should write
+  both train and val shards in a single pass over documents.
+- **Restartable**: build_shards does not checkpoint progress; crashes require restart from scratch.
+- **Shard order shuffling**: Loader yields shards in sorted order; DATA_PLAN section 3 specifies
+  shuffling — decision deferred until actual Kaggle document order is known.
+- **EOS-only separator (DECISION)**: build_shards appends only EOS (GPT-2 style, one separator
+  per document). BOS is intentionally not prepended. Packed sequences have no cross-document
+  attention masking — accepted at this scale. This is an explicit design decision.
 
 ## Binding Rules (Active)
 

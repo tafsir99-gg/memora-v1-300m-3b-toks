@@ -289,3 +289,141 @@ def test_seq_len_must_match_max_seq_len():
     }
     with pytest.raises(ValidationError, match="seq_len"):
         MemoraConfig.model_validate(bad)
+
+
+# ---------------------------------------------------------------------------
+# Updated config defaults (P1)
+# ---------------------------------------------------------------------------
+
+
+def test_300m_defaults_match_plan():
+    """Verify the P1 updated defaults for 300m.yaml."""
+    cfg = _300m()
+    assert cfg.evaluation.val_tokens == 2_000_000
+    assert cfg.evaluation.val_interval_minutes == 60
+    assert cfg.logging.log_interval_steps == 1
+    assert cfg.checkpoint.hf_upload_interval_minutes == 120
+    # save_optimizer field removed
+    assert not hasattr(cfg.checkpoint, "save_optimizer")
+
+
+# ---------------------------------------------------------------------------
+# with_overrides helper (P1e)
+# ---------------------------------------------------------------------------
+
+
+def test_with_overrides_valid():
+    """with_overrides applies nested changes and runs validators."""
+    cfg = _tiny()
+    new_cfg = MemoraConfig.with_overrides(cfg, {"training": {"lr": 1e-3}})
+    assert new_cfg.training.lr == 1e-3
+    assert new_cfg.training.global_batch_tokens == cfg.training.global_batch_tokens
+
+
+def test_with_overrides_invalid_rejects():
+    """with_overrides raises ValidationError for values that violate invariants."""
+    cfg = _tiny()
+    # micro_batch_size=7 makes 1024 / (7*128) non-integer -> ValidationError
+    with pytest.raises(ValidationError):
+        MemoraConfig.with_overrides(cfg, {"training": {"micro_batch_size": 7}})
+
+
+# ---------------------------------------------------------------------------
+# wsd_decay_start_tokens (P1 / scheduler)
+# ---------------------------------------------------------------------------
+
+
+def test_wsd_decay_start_tokens_default_is_none():
+    t = TrainingConfig.model_validate(
+        {
+            "global_batch_tokens": 1024,
+            "micro_batch_size": 2,
+            "seq_len": 128,
+            "warmup_tokens": 2000,
+            "wsd_decay_tokens": 3000,
+            "max_tokens": 10000,
+            "lr_schedule": "wsd",
+        }
+    )
+    assert t.wsd_decay_start_tokens is None
+
+
+def test_wsd_decay_start_tokens_explicit():
+    t = TrainingConfig.model_validate(
+        {
+            "global_batch_tokens": 1024,
+            "micro_batch_size": 2,
+            "seq_len": 128,
+            "warmup_tokens": 1000,
+            "wsd_decay_tokens": 2000,
+            "wsd_decay_start_tokens": 5000,
+            "max_tokens": 10000,
+            "lr_schedule": "wsd",
+        }
+    )
+    assert t.wsd_decay_start_tokens == 5000
+
+
+def test_wsd_decay_start_before_warmup_raises():
+    with pytest.raises(ValidationError, match="wsd_decay_start_tokens"):
+        TrainingConfig.model_validate(
+            {
+                "global_batch_tokens": 1024,
+                "micro_batch_size": 2,
+                "seq_len": 128,
+                "warmup_tokens": 5000,
+                "wsd_decay_tokens": 3000,
+                "wsd_decay_start_tokens": 1000,  # < warmup_tokens
+                "max_tokens": 10000,
+                "lr_schedule": "wsd",
+            }
+        )
+
+
+def test_wsd_decay_start_overflows_max_raises():
+    with pytest.raises(ValidationError, match="wsd_decay_start_tokens"):
+        TrainingConfig.model_validate(
+            {
+                "global_batch_tokens": 1024,
+                "micro_batch_size": 2,
+                "seq_len": 128,
+                "warmup_tokens": 1000,
+                "wsd_decay_tokens": 3000,
+                "wsd_decay_start_tokens": 8500,  # 8500+3000=11500 > 10000
+                "max_tokens": 10000,
+                "lr_schedule": "wsd",
+            }
+        )
+
+
+# ---------------------------------------------------------------------------
+# check_resume_compat (P3)
+# ---------------------------------------------------------------------------
+
+
+def test_check_resume_compat_identical():
+    cfg = _tiny()
+    warnings = cfg.check_resume_compat(cfg)
+    assert warnings == []
+
+
+def test_check_resume_compat_allowed_difference():
+    cfg = _tiny()
+    new_cfg = MemoraConfig.with_overrides(cfg, {"training": {"max_tokens": 20000}})
+    warnings = cfg.check_resume_compat(new_cfg)
+    assert any("max_tokens" in w for w in warnings)
+
+
+def test_check_resume_compat_must_match_raises():
+    cfg = _tiny()
+    new_cfg = MemoraConfig.with_overrides(cfg, {"training": {"lr": 1e-3}})
+    with pytest.raises(ValueError, match="lr"):
+        cfg.check_resume_compat(new_cfg)
+
+
+def test_check_resume_compat_data_seed_raises():
+    cfg = _tiny()
+    new_cfg = MemoraConfig.with_overrides(cfg, {"data": {"seed": 99}})
+    with pytest.raises(ValueError, match="data.seed"):
+        cfg.check_resume_compat(new_cfg)
+

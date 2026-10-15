@@ -43,7 +43,6 @@ checkpoint:
   keep_full_n: 2
   keep_lightweight_n: 3
   keep_best: true
-  save_optimizer: true
 
 session:
   max_wall_clock_minutes: 10

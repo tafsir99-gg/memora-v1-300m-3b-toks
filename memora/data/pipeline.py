@@ -302,23 +302,78 @@ class ShardedTokenLoader:
         self._current: np.ndarray | None = None
         self._load_shard(self._shard_idx)
 
+        # Pre-compute shard list hash for state_dict identity checks
+        self._shard_list_hash = self._compute_shard_list_hash()
+
+    @staticmethod
+    def _compute_shard_list_hash_for(paths: list[pathlib.Path]) -> str:
+        """SHA-256 over sorted (name, size) pairs of shard files."""
+        h = hashlib.sha256()
+        for p in sorted(paths):
+            stat = p.stat()
+            h.update(f"{p.name}:{stat.st_size}".encode())
+        return h.hexdigest()[:16]
+
+    def _compute_shard_list_hash(self) -> str:
+        return self._compute_shard_list_hash_for(self._shard_paths)
+
     def _load_shard(self, idx: int) -> None:
         self._current = _read_shard(self._shard_paths[idx])
         self._shard_idx = idx
         # mmap: in production we'd use np.memmap; for correctness we use _read_shard here.
 
     def state_dict(self) -> dict:
-        """Return state dict to resume."""
-        return {"shard_idx": self._shard_idx, "offset": self._offset}
+        """Return self-describing state dict to resume.
+
+        All values are plain int or str so the dict is JSON-serialisable.
+        load_state_dict raises ValueError if any identity field differs.
+        """
+        return {
+            "split": self.split,
+            "seq_len": self.seq_len,
+            "rank": self.rank,
+            "world_size": self.world_size,
+            "num_shards": len(self._shard_paths),
+            "shard_list_hash": self._shard_list_hash,
+            "shard_idx": self._shard_idx,
+            "offset": self._offset,
+        }
 
     def load_state_dict(self, state: dict) -> None:
-        """Restore position from state dict."""
+        """Restore position from state dict.
+
+        Raises ValueError if the identity fields don't match this loader.
+        """
+        mismatches = []
+        identity_fields = {
+            "split": self.split,
+            "seq_len": self.seq_len,
+            "rank": self.rank,
+            "world_size": self.world_size,
+            "num_shards": len(self._shard_paths),
+            "shard_list_hash": self._shard_list_hash,
+        }
+        for field, current_val in identity_fields.items():
+            saved_val = state.get(field)
+            if saved_val != current_val:
+                mismatches.append(f"{field}: saved={saved_val!r}, current={current_val!r}")
+        if mismatches:
+            raise ValueError(
+                "Cannot restore state dict — loader identity mismatch:\n"
+                + "\n".join(f"  {m}" for m in mismatches)
+            )
         self._shard_idx = state["shard_idx"]
         self._offset = state["offset"]
         self._load_shard(self._shard_idx)
 
     def __iter__(self) -> Iterator[np.ndarray]:
-        """Yield non-overlapping seq_len windows of token IDs as uint16 arrays."""
+        """Yield windows of seq_len+1 tokens with stride seq_len.
+
+        Each window is seq_len+1 tokens: tokens[0:seq_len] are inputs and
+        tokens[1:seq_len+1] are targets (standard next-token layout).
+        Consecutive windows share exactly one token: window[i][-1] == window[i+1][0].
+        Iteration stops when the remaining shards cannot fill a full window.
+        """
         assert self._current is not None
         while True:
             # If the current shard has a full window remaining, yield it.
