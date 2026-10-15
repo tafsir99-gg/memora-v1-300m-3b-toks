@@ -4,7 +4,7 @@
 
 ## Current Phase
 
-**Phase 4 — IMPLEMENTATION** (Stages 1–6 Complete, P1-P4 fixes applied. Stage 7a/8a IN PROGRESS)
+**Phase 4 — IMPLEMENTATION** (Stages 1–6 + 7a Complete. Stage 8a IN PROGRESS — waiting for Owner)
 
 ## Approval State
 
@@ -66,7 +66,13 @@
 - [x] Stage 5: Model & Parameter Counter (Transformer architecture, init, counter, 297M verified)
 
 - [x] Stage 6: Model Tests (shapes, causal masking, RoPE, overfit test)
-- [x] P1-P4 fixes: config defaults, wsd_decay_start_tokens, with_overrides, check_resume_compat, loader state_dict, docs
+- [x] Stage 7a: Scheduler, optimizer builder, logger (135 tests pass, 1 GPU skip)
+  - `memora/training/scheduler.py`: pure stateless `lr_at(tokens, cfg)`, cosine and wsd
+  - `memora/training/optimizer.py`: `build_optimizer(model, cfg)` + `set_lr(optimizer, lr)`
+  - `memora/training/logger.py`: JSONL logger, rank-0 only, NaN→null, required-field validation
+  - Tests: warmup closed-form, cosine midpoint/monotone/1B-token arithmetic, wsd stable/decay/hold,
+    continuity (formally derived 1.001×slope threshold + discontinuous-schedule rejection), all
+    event types, missing-field raises, NaN/inf→null+nonfinite list, append across sessions
 
 ## UNVERIFIED Items (require Kaggle GPU)
 
@@ -76,12 +82,11 @@
 
 ## In-Progress Items
 
-- Stage 7a: scheduler, optimizer, logger — IN PROGRESS
-- Stage 8a: checkpoint system — IN PROGRESS
+- Stage 8a: checkpoint system — NEXT (not started, waiting for Owner)
 
 ## Not Started Items
 
-- [ ] Stage 7b: Training loop (blocked on 7a/8a review)
+- [ ] Stage 7b: Training loop (blocked on 8a review)
 - [ ] All training (blocked on implementation)
 - [ ] All evaluation (blocked on training)
 

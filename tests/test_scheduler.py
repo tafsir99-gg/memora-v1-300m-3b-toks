@@ -11,6 +11,7 @@ from memora.config import MemoraConfig, TrainingConfig
 from memora.training.scheduler import lr_at
 
 # ---------------------------------------------------------------------------
+
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -101,12 +102,32 @@ def test_cosine_monotone_decreasing():
 
 
 def test_cosine_continuity_at_warmup_boundary():
-    """LR is continuous at warmup_tokens: the gap must be at most 1 warmup step."""
+    """LR must be continuous at warmup_tokens.
+
+    Derivation:
+      At t = warmup_tokens - 1 (still in warmup):
+        LR_left  = lr * (warmup_tokens - 1) / warmup_tokens
+      At t = warmup_tokens (cosine, progress = 0):
+        LR_right = min_lr + 1.0 * (lr - min_lr) = lr
+      Exact gap = lr - lr * (W-1)/W = lr / warmup_tokens
+
+    This equals exactly one warmup-step increment.  It is not a
+    discontinuity — it is the final linear step of the ramp.  Any
+    gap larger than (1 + ε_float) * lr / warmup_tokens would indicate
+    a real schedule discontinuity.
+
+    Threshold: 1.001 * lr / warmup_tokens (allows 0.1% float slack;
+    float rounding in lr*(W-1)/W is < 1 ULP ≈ lr * 1e-15 << 0.001 * lr/W).
+    """
     cfg = _cfg(warmup_tokens=1000)
-    lhs = lr_at(cfg.warmup_tokens - 1, cfg)
-    rhs = lr_at(cfg.warmup_tokens, cfg)
-    # Maximum one-step jump during warmup: lr / warmup_tokens
-    assert abs(lhs - rhs) < 2.0 * cfg.lr / cfg.warmup_tokens
+    lhs = lr_at(cfg.warmup_tokens - 1, cfg)  # last warmup step
+    rhs = lr_at(cfg.warmup_tokens, cfg)       # first post-warmup value
+    # Expected exact gap = lr / warmup_tokens
+    expected_gap = cfg.lr / cfg.warmup_tokens
+    assert abs(lhs - rhs) == pytest.approx(expected_gap, rel=1e-9)
+    # And it must be below the tight threshold
+    threshold = 1.001 * expected_gap
+    assert abs(lhs - rhs) < threshold
 
 
 def test_cosine_1b_tokens_300m_config():
@@ -214,12 +235,19 @@ def test_wsd_explicit_decay_start():
 
 
 def test_wsd_continuity_at_warmup_boundary():
-    """LR is continuous at warmup_tokens: the gap must be at most 1 warmup step."""
+    """LR must be continuous at warmup_tokens for wsd schedule.
+
+    Same derivation as cosine: the gap equals exactly one warmup-step
+    increment (lr / warmup_tokens).  The stable phase returns lr exactly,
+    so the gap is lr - lr*(W-1)/W = lr/W.
+    """
     cfg = _wsd_cfg()
     lhs = lr_at(cfg.warmup_tokens - 1, cfg)
     rhs = lr_at(cfg.warmup_tokens, cfg)
-    # Maximum one-step jump during warmup: lr / warmup_tokens
-    assert abs(lhs - rhs) < 2.0 * cfg.lr / cfg.warmup_tokens
+    expected_gap = cfg.lr / cfg.warmup_tokens
+    assert abs(lhs - rhs) == pytest.approx(expected_gap, rel=1e-9)
+    threshold = 1.001 * expected_gap
+    assert abs(lhs - rhs) < threshold
 
 
 def test_wsd_continuity_at_decay_boundary():
@@ -244,3 +272,53 @@ def test_wsd_start_before_warmup_raises():
 def test_wsd_start_plus_decay_exceeds_max_raises():
     with pytest.raises(ValidationError):
         _wsd_cfg(wsd_decay_start_tokens=9000, wsd_decay_tokens=2000, max_tokens=10000)
+
+
+# ---------------------------------------------------------------------------
+# Discontinuous-schedule rejection: proves the threshold is tight
+# ---------------------------------------------------------------------------
+
+
+def test_continuity_threshold_rejects_discontinuous_schedule():
+    """The 1.001 * lr/W threshold must FAIL for a schedule that jumps by 10% of lr.
+
+    This test builds a deliberately bad schedule function that jumps by
+    10% * lr at the warmup boundary, applies the same continuity check,
+    and asserts the check raises AssertionError.  If this test fails (i.e.
+    the AssertionError is NOT raised), the threshold is too loose.
+
+    Derivation:
+      Bad gap = 0.10 * lr  (10% of peak LR — obviously a real discontinuity)
+      Threshold = 1.001 * lr / warmup_tokens = 1.001 * 6e-4 / 1000 = 6.006e-7
+      Bad gap (6e-5) >> threshold (6.006e-7)  =>  check must fail.
+    """
+    cfg = _cfg(warmup_tokens=1000)
+
+    # Simulate a bad schedule: warmup ramp that is fine, but at t=warmup
+    # it starts 10% above where the ramp left off instead of smoothly
+    # continuing to lr.
+    def bad_schedule(t: int) -> float:
+        """Same warmup, but adds a 10%-lr jump exactly at warmup_tokens."""
+        if t < cfg.warmup_tokens:
+            return float(cfg.lr * t / cfg.warmup_tokens)
+        # Discontinuous jump: stable at lr + 10% jump
+        return float(cfg.lr + 0.10 * cfg.lr)
+
+    lhs = bad_schedule(cfg.warmup_tokens - 1)
+    rhs = bad_schedule(cfg.warmup_tokens)
+    bad_gap = abs(lhs - rhs)
+
+    # Confirm the bad gap is large (for test comprehensibility)
+    assert bad_gap == pytest.approx(0.10 * cfg.lr + cfg.lr / cfg.warmup_tokens, rel=1e-9)
+
+    # The threshold that the real tests use
+    threshold = 1.001 * cfg.lr / cfg.warmup_tokens
+
+    # The bad gap must EXCEED the threshold
+    assert bad_gap > threshold, (
+        f"Bad gap {bad_gap:.6e} should exceed threshold {threshold:.6e}; "
+        "threshold is too loose!"
+    )
+    # Confirm the continuity check on the bad schedule would fail:
+    with pytest.raises(AssertionError):
+        assert bad_gap < threshold
